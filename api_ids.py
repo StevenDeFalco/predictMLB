@@ -1,4 +1,4 @@
-import statsapi
+import statsapi, requests
 
 def get_team_ids():
     """
@@ -7,19 +7,23 @@ def get_team_ids():
     Returns:
         id_to_team: {id: {<team_info>}}
         team_to_id: {teamName: id}
+        abbreviation_to_id: {abbreviation: id}
     """
     id_to_team, team_to_id = {}, {}
     for team in statsapi.lookup_team('', activeStatus="Y"):
         if team['id'] not in id_to_team:
+            abbreviation = requests.get(f"https://statsapi.mlb.com/api/v1/teams/{team['id']}").json()['teams'][0]['abbreviation']
             id_to_team[team['id']] = {'name': team['name'], 
                                     'teamName': team['teamName'], 
+                                    'abbreviation': abbreviation,
                                     'location': team['locationName'],
                                     'shortName': team['shortName']}
     team_to_id = {value['name']: key for key, value in id_to_team.items()}
-    return id_to_team, team_to_id
+    team_to_abbreviation = {value['name']: value['abbreviation'] for key, value in id_to_team.items()}
+    return id_to_team, team_to_id, team_to_abbreviation
 
-# dictionaries for translating to/from teamName/id
-id_to_team, team_to_id = get_team_ids()
+# dictionaries for translating to/from teamName/id/abbreviation
+id_to_team, team_to_id, team_to_abbreviation = get_team_ids()
 
 def get_division_data():
     """
