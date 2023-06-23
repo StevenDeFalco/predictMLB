@@ -1,4 +1,4 @@
-# Sports-Twitter-Bot
+# mlb-predict
 
 Summer project 2023
 
