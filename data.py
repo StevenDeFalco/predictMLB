@@ -1,6 +1,6 @@
 import statsapi, time, csv, json, subprocess, os
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 PATH_TO_ELO='./data/mlb_elo.csv'
 
@@ -234,6 +234,55 @@ class TeamStats:
         a_wins, a_loses, *_ = self.get_team_standings(away, away_standings)
         return round(h_wins/(h_loses+h_wins), 3), round(a_wins/(a_loses+a_wins), 3)
 
+    def declareDf(self):
+        """
+        method that will declare the standard format for our data frame and return an instance of it
+        """
+        game_df = pd.DataFrame(columns=['game-id',
+                                'date',
+                                'home-team',
+                                'away-team',
+                                'did-home-win',
+                                'home-win-percentage',
+                                'away-win-percentage',
+                                'home-last10-avg-runs',
+                                'home-last10-avg-runs-allowed',
+                                'away-last10-avg-runs',
+                                'away-last10-avg-runs-allowed',
+                                'home-last10-avg-hits',
+                                'home-last10-avg-hits-allowed',
+                                'away-last10-avg-hits',
+                                'away-last10-avg-hits-allowed',
+                                'home-last10-avg-ops',
+                                'away-last10-avg-ops',
+                                'home-last10-avg-strikeouts',
+                                'away-last10-avg-strikeouts',
+                                'home-last10-avg-obp',
+                                'away-last10-avg-obp',
+                                'home-starter-career-era',
+                                'away-starter-career-era',
+                                'home-starter-season-era',
+                                'away-starter-season-era',
+                                'home-starter-season-avg',
+                                'away-starter-season-avg',
+                                'home-starter-season-runs-per9',
+                                'away-starter-season-runs-per9',
+                                'home-starter-season-win-percentage',
+                                'away-starter-season-win-percentage',
+                                'home-elo-pregame',
+                                'away-elo-pregame',
+                                'home-elo-probability',
+                                'away-elo-probability',
+                                'home-rating-pregame',
+                                'away-rating-pregame',
+                                'home-pitcher-rgs',
+                                'away-pitcher-rgs',
+                                'home-rating-probability',
+                                'away-rating-probability',
+                                ])
+        return game_df
+
+
     def make_game_df(self, gamePk):
         """
         method that will construct a data frame for a single game given the game id 
@@ -245,53 +294,12 @@ class TeamStats:
             game_df: data frame with data points about a specific game
         """
         start_time = time.time()
-        game_df = pd.DataFrame(columns=['did-home-win',
-                                        'date',
-                                        'game-id',
-                                        'home-team',
-                                        'away-team',
-                                        'home-win-percentage',
-                                        'away-win-percentage',
-                                        'home-last10-avg-runs',
-                                        'home-last10-avg-runs-allowed',
-                                        'away-last10-avg-runs',
-                                        'away-last10-avg-runs-allowed',
-                                        'home-last10-avg-hits',
-                                        'home-last10-avg-hits-allowed',
-                                        'away-last10-avg-hits',
-                                        'away-last10-avg-hits-allowed',
-                                        'home-last10-avg-ops',
-                                        'away-last10-avg-ops',
-                                        'home-last10-avg-strikeouts',
-                                        'away-last10-avg-strikeouts',
-                                        'home-last10-avg-obp',
-                                        'away-last10-avg-obp',
-                                        'home-starter-career-era',
-                                        'away-starter-career-era',
-                                        'home-starter-season-era',
-                                        'away-starter-season-era',
-                                        'home-starter-season-avg',
-                                        'away-starter-season-avg',
-                                        'home-starter-season-runs-per9',
-                                        'away-starter-season-runs-per9',
-                                        'home-starter-season-win-percentage',
-                                        'away-starter-season-win-percentage',
-                                        'home-elo-pregame',
-                                        'away-elo-pregame',
-                                        'home-elo-probability',
-                                        'away-elo-probability',
-                                        'home-rating-pregame',
-                                        'away-rating-pregame',
-                                        'home-pitcher-rgs',
-                                        'away-pitcher-rgs',
-                                        'home-rating-probability',
-                                        'away-rating-probability',
-                                        ])
+        game_df = self.declareDf()
         game_df['did-home-win'] = game_df['did-home-win'].astype(bool)
         string_cols = ['date', 'home-team', 'away-team']
         game_df[string_cols] = game_df[string_cols].astype(str)
         game = statsapi.schedule(game_id=gamePk)[0]
-        game_df.at[0, 'did-home-win'] = True if game.get('winning_team') == game['home_name'] else False
+        game_df.at[0, 'did-home-win'] = True if game.get('winning_team') == game['home_name'] else (False if game.get('winning_team') == game['away_name'] else None)
         game_df.at[0, 'date'] = game['game_date']
         game_df.at[0, 'game-id'] = game['game_id']
         game_df.at[0, 'home-team'], game_df.at[0, 'away-team'] = game['home_name'], game['away_name']
@@ -311,11 +319,43 @@ class TeamStats:
         print(f"Constructed training data from {game['summary']} in {round(function_time,2)} seconds.")
         return game_df
 
+    def get_data(self, start_date, end_date=None, file_path=None):
+        """
+        method to get historical MLB data for the given team and save it to a file 
+
+        Args: 
+            start_date: first date to start retrieving game data from (YYYY-MM-DD)
+            end_date: last date to retrieve game data from (YYYY-MM-DD). Defaults to current day 
+            file_path: path to save data file to for persistent storage 
+
+        Returns: 
+            data: python dataframe with the requested time range game data
+        """
+        if not end_date:
+            end_date = date.today().strftime("%m/%d/%Y") 
+        formatted_end = end_date.replace("/", "-")
+        formatted_start = start_date.replace("/", "-")
+        if not file_path: 
+            file_path = f"./{self.name.replace(' ', '-')}_{formatted_start}_{formatted_end}_games.xlsx"
+        possible_games = statsapi.schedule(start_date=start_date, end_date=end_date, team=self.id)
+        games = [game for game in possible_games if game.get("game_type") in ["R", "F", "D", "L", "W", "C", "P"]]
+        ids = [game.get('game_id') for game in games]
+        data = self.declareDf()
+        for game_id in ids: 
+            game_df = self.make_game_df(game_id)
+            data = pd.concat([data, game_df], ignore_index=True)
+        try:
+            data.to_excel(file_path, index=False)
+        except Exception as e: 
+            print(f"An exception has occured while saving data to disk: {e}")
+        return data
+
 def main():
     nym = TeamStats("New York Mets")
-    df = nym.make_game_df(nym.lastGameId)
-    df.to_excel('lastGame.xlsx', index=False)
     # call class methods...
+
+    # example getting date from June 1st until present
+    # print(nym.get_data(start_date="06/01/2023"))
 
 if __name__ == "__main__":
     main()
