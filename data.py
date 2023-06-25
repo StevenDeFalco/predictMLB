@@ -82,6 +82,7 @@ class TeamStats:
     def __init__(self, team):
         self.name = team
         self.retrieve_ids()
+        self.abbreviation = team_to_abbreviation[self.name]
         self.id = team_to_id[self.name]
         self.divisionName, self.divisionId = self.get_division(self.name)
         self.divisionStandings = self.get_division_standings(self.divisionId)
@@ -336,7 +337,7 @@ class TeamStats:
         formatted_end = end_date.replace("/", "-")
         formatted_start = start_date.replace("/", "-")
         if not file_path: 
-            file_path = f"./{self.name.replace(' ', '-')}_{formatted_start}_{formatted_end}_games.xlsx"
+            file_path = f"./data/{self.abbreviation}_{formatted_start}_{formatted_end}.xlsx"
         possible_games = statsapi.schedule(start_date=start_date, end_date=end_date, team=self.id)
         games = [game for game in possible_games if game.get("game_type") in ["R", "F", "D", "L", "W", "C", "P"]]
         ids = [game.get('game_id') for game in games]
