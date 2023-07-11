@@ -446,12 +446,15 @@ class TeamStats:
         function_time = time.time() - start_time
         print(
             f"Constructed training data from {game['summary']}"
-            f"in {round(function_time,2)} seconds."
+            f" in {round(function_time,2)} seconds."
         )
         return game_df
 
     def get_data(
-        self, start_date: str, end_date: Optional[str] = None, file_path: Optional[str] = None
+        self,
+        start_date: str,
+        end_date: Optional[str] = None,
+        file_path: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         method to get historical MLB data for the given team and save it to a file
@@ -469,19 +472,33 @@ class TeamStats:
             end_date = date.today().strftime("%m/%d/%Y")
         formatted_end = end_date.replace("/", "-")
         formatted_start = start_date.replace("/", "-")
+        start_obj = datetime.strptime(start_date, "%m/%d/%Y")
+        end_obj = datetime.strptime(end_date, "%m/%d/%Y")
+        start_comp = start_obj.strftime("%Y-%m-%d")
+        end_comp = end_obj.strftime("%Y-%m-%d")
         if not file_path:
             file_path = (
                 f"./data/{self.abbreviation}_{formatted_start}_{formatted_end}.xlsx"
             )
-        possible_games = statsapi.schedule(
-            start_date=start_date, end_date=end_date, team=self.id
-        )
-        games = [
-            game
-            for game in possible_games
-            if game.get("game_type") in ["R", "F", "D", "L", "W", "C", "P"]
-        ]
+        start_year = int(start_date[-4:])
+        end_year = int(end_date[-4:])
+        games = []
+        for year in range(start_year, end_year + 1):
+            year_start = f"01/01/{year}"
+            year_end = f"12/31/{year}"
+            possible_games = statsapi.schedule(
+                start_date=year_start, end_date=year_end, team=self.id
+            )
+            games.extend(
+                [
+                    game
+                    for game in possible_games
+                    if game.get("game_type") in ["R", "F", "D", "L", "W", "C", "P"]
+                    and start_comp <= game["game_date"] <= end_comp
+                ]
+            )
         ids = [game.get("game_id") for game in games]
+        print(f"Found {str(len(ids))} games in range. Beginning data retrieval!")
         data = self.declareDf()
         for game_id in ids:
             game_df = self.make_game_df(game_id)
