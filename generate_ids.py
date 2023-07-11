@@ -1,6 +1,51 @@
 import statsapi, requests, json
 
 
+def get_elo_abbreviation():
+    """
+    function to get a dictionary for translating abbreviations used in the elo sheet
+
+    Returns:
+        elo_abbreviation: {teamName: elo-abbrev}
+    """
+    elo_abbreviation = {
+        "Oakland Athletics": "OAK",
+        "Pittsburgh Pirates": "PIT",
+        "San Diego Padres": "SDP",
+        "Seattle Mariners": "SEA",
+        "San Francisco Giants": "SFG",
+        "St. Louis Cardinals": "STL",
+        "Tampa Bay Rays": "TBD",
+        "Texas Rangers": "TEX",
+        "Toronto Blue Jays": "TOR",
+        "Minnesota Twins": "MIN",
+        "Philadelphia Phillies": "PHI",
+        "Atlanta Braves": "ATL",
+        "Chicago White Sox": "CHW",
+        "Miami Marlins": "FLA",
+        "New York Yankees": "NYY",
+        "Milwaukee Brewers": "MIL",
+        "Los Angeles Angels": "ANA",
+        "Arizona Diamondbacks": "ARI",
+        "Baltimore Orioles": "BAL",
+        "Boston Red Sox": "BOS",
+        "Chicago Cubs": "CHC",
+        "Cincinnati Reds": "CIN",
+        "Cleveland Guardians": "CLE",
+        "Colorado Rockies": "COL",
+        "Detroit Tigers": "DET",
+        "Houston Astros": "HOU",
+        "Kansas City Royals": "KCR",
+        "Los Angeles Dodgers": "LAD",
+        "Washington Nationals": "WSN",
+        "New York Mets": "NYM",
+    }
+    return elo_abbreviation
+
+
+elo_abbreviation = get_elo_abbreviation()
+
+
 def get_team_ids():
     """
     function to return two dictionaries for translating to and from team names / ids
@@ -25,7 +70,7 @@ def get_team_ids():
             }
     team_to_id = {value["name"]: key for key, value in id_to_team.items()}
     team_to_abbreviation = {
-        value["name"]: value["abbreviation"] for key, value in id_to_team.items()
+        value["name"]: value["abbreviation"] for _, value in id_to_team.items()
     }
     return id_to_team, team_to_id, team_to_abbreviation
 
@@ -71,6 +116,7 @@ data = {
     "division_teams": division_teams,
     "division_to_id": division_to_id,
     "id_to_division": id_to_division,
+    "elo_abbreviation": elo_abbreviation
 }
 
 with open("./data/ids.json", "w") as f:
