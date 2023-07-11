@@ -494,6 +494,7 @@ class TeamStats:
                     game
                     for game in possible_games
                     if game.get("game_type") in ["R", "F", "D", "L", "W", "C", "P"]
+                    and game.get("status") == "Final"
                     and start_comp <= game["game_date"] <= end_comp
                 ]
             )
