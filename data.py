@@ -48,10 +48,9 @@ class TeamStats:
             if key in data:
                 globals()[key] = data[key]
 
-    def get_division(
-        self, team: str
-    ) -> Optional[Union[Tuple[str, int], Tuple[None, None]]]:
+    def get_division(self, team: str) -> Optional[Union[Tuple[str, int], None]]:
         """
+        Optional[Union[Tuple[str, int], Tuple[None, None]]]
         method to get the division of the given team
 
         Args:
@@ -62,11 +61,11 @@ class TeamStats:
         for division in division_teams:
             if team in division_teams[division]:
                 return division, division_to_id[division]
-        return None, None
+        return None
 
     def get_division_standings(
         self, division_id: int, request_date: Optional[str] = None
-    ) -> Dict:
+    ) -> Optional[Union[Dict, None]]:
         """
         method to get current division standings of an MLB team
 
@@ -79,9 +78,11 @@ class TeamStats:
         """
         if not request_date:
             request_date = date.today().strftime("%m/%d/%Y")
-        standings = statsapi.standings_data("103,104", date=request_date)[division_id][
-            "teams"
-        ]
+        standings = statsapi.standings_data("103,104", date=request_date).get(
+            "division_id"
+        )
+        if standings:
+            standings = standings.get("teams")
         return standings
 
     def get_team_standings(
@@ -138,13 +139,14 @@ class TeamStats:
         self.id = team_to_id[self.name]
         self.divisionName, self.divisionId = self.get_division(self.name)
         self.divisionStandings = self.get_division_standings(self.divisionId)
-        (
-            self.wins,
-            self.loses,
-            self.divisionRank,
-            self.divisionGB,
-            self.leagueRank,
-        ) = self.get_team_standings(self.name, self.divisionStandings)
+        if self.divisionStandings:
+            (
+                self.wins,
+                self.loses,
+                self.divisionRank,
+                self.divisionGB,
+                self.leagueRank,
+            ) = self.get_team_standings(self.name, self.divisionStandings)
         self.nextGameId, self.nextGame = self.get_next_game()
         self.lastGameId, self.lastGame = self.get_last_game()
 
@@ -165,8 +167,8 @@ class TeamStats:
         with open(PATH_TO_ELO, "r") as elo:
             elo_reader = csv.DictReader(elo)
             home, away = (
-                elo_abbreviation[home_team],
-                elo_abbreviation[away_team],
+                elo_abbreviation.get(home_team),
+                elo_abbreviation.get(away_team),
             )
             # TODO: more efficient search alg
             for row in elo_reader:
@@ -202,7 +204,7 @@ class TeamStats:
             player_id: a player's id for use with the api as a parameter
         """
         player = statsapi.lookup_player(player_name, season=season)
-        return player[0]["id"] or None
+        return player[0].get("id")
 
     def get_starting_pitcher_stats(self, gamePk: str) -> Dict:
         """
@@ -231,14 +233,17 @@ class TeamStats:
                 continue
             seasons = statsapi.player_stat_data(
                 pitcher_id, group="pitching", type="yearByYear"
-            )["stats"]
+            ).get("stats")
             season_stats = {}
             for year in seasons:
                 if year["season"] == season:
                     season_stats = year["stats"]
             career_stats = statsapi.player_stat_data(
                 pitcher_id, group="pitching", type="career"
-            )["stats"][0]["stats"]
+            )["stats"]
+            if not career_stats:
+                continue
+            career_stats = career_stats[0]["stats"]
             starters_stats[f"{pitcher[0]}-starter-career-era"] = career_stats["era"]
             starters_stats[f"{pitcher[0]}-starter-season-era"] = season_stats["era"]
             starters_stats[f"{pitcher[0]}-starter-season-avg"] = season_stats["avg"]
@@ -327,7 +332,9 @@ class TeamStats:
             )
         return last10_stats
 
-    def get_win_percentage(self, gamePk: str) -> Tuple[float, float]:
+    def get_win_percentage(
+        self, gamePk: str
+    ) -> Optional[Union[Tuple[float, float], Tuple[None, None]]]:
         """
         method that will retrieve and calculate a team's winning percentage
 
@@ -343,10 +350,15 @@ class TeamStats:
         date_obj = datetime.strptime(game_date, "%Y-%m-%d")
         game_date = datetime.strftime(date_obj, "%m/%d/%Y")
         home, away = game["home_name"], game["away_name"]
-        home_div, away_div = self.get_division(home)[1], self.get_division(away)[1]
+        home_div, away_div = self.get_division(home), self.get_division(away)
+        if not home_div or not away_div:
+            return None, None
+        home_div, away_div = home_div[1], away_div[1]
         home_standings, away_standings = self.get_division_standings(
             home_div, request_date=game_date
         ), self.get_division_standings(away_div, request_date=game_date)
+        if not home_standings or not away_standings:
+            return None, None
         h_wins, h_loses, *_ = self.get_team_standings(home, home_standings)
         a_wins, a_loses, *_ = self.get_team_standings(away, away_standings)
         return round(h_wins / (h_loses + h_wins), 3), round(
@@ -455,6 +467,7 @@ class TeamStats:
         start_date: str,
         end_date: Optional[str] = None,
         file_path: Optional[str] = None,
+        save_to_file: Optional[bool] = True,
     ) -> pd.DataFrame:
         """
         method to get historical MLB data for the given team and save it to a file
@@ -464,22 +477,24 @@ class TeamStats:
             end_date: last date to retrieve game data from (YYYY-MM-DD).
                 -> defaults to current day
             file_path: path to save data file to for persistent storage
+            save_to_file: bool indicating if you wish the data to be stored
 
         Returns:
             data: python dataframe with the requested time range game data
         """
         if not end_date:
             end_date = date.today().strftime("%m/%d/%Y")
-        formatted_end = end_date.replace("/", "-")
-        formatted_start = start_date.replace("/", "-")
+        if save_to_file:
+            formatted_end = end_date.replace("/", "-")
+            formatted_start = start_date.replace("/", "-")
+            if not file_path:
+                file_path = (
+                    f"./data/{self.abbreviation}_{formatted_start}_{formatted_end}.xlsx"
+                )
         start_obj = datetime.strptime(start_date, "%m/%d/%Y")
         end_obj = datetime.strptime(end_date, "%m/%d/%Y")
         start_comp = start_obj.strftime("%Y-%m-%d")
         end_comp = end_obj.strftime("%Y-%m-%d")
-        if not file_path:
-            file_path = (
-                f"./data/{self.abbreviation}_{formatted_start}_{formatted_end}.xlsx"
-            )
         start_year = int(start_date[-4:])
         end_year = int(end_date[-4:])
         games = []
@@ -504,10 +519,12 @@ class TeamStats:
         for game_id in ids:
             game_df = self.make_game_df(game_id)
             data = pd.concat([data, game_df], ignore_index=True)
-        try:
-            data.to_excel(file_path, index=False)
-        except Exception as e:
-            print(f"An exception has occured while saving data to disk: {e}")
+        if save_to_file:
+            try:
+                data.to_excel(file_path, index=False)
+                print(f"Successfully saved data to {file_path}.")
+            except Exception as e:
+                print(f"An exception has occured while saving data to disk: {e}")
         return data
 
 
