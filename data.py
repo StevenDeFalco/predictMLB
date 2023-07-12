@@ -204,6 +204,8 @@ class TeamStats:
             player_id: a player's id for use with the api as a parameter
         """
         player = statsapi.lookup_player(player_name, season=season)
+        if not player:
+            return None
         return player[0].get("id")
 
     def get_starting_pitcher_stats(self, gamePk: str) -> Dict:
