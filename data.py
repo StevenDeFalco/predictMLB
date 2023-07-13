@@ -8,6 +8,8 @@ import json
 import subprocess
 import os
 
+# TODO: create method to make single game array for training
+
 PATH_TO_ELO = "./data/mlb_elo.csv"
 IDS = [
     "id_to_team",
@@ -31,7 +33,10 @@ id_to_division: Dict[int, str] = {}
 elo_abbreviation: Dict[str, str] = {}
 
 
-class TeamStats:
+class LeagueStats:
+    def __init__(self):
+        self.retrieve_ids(IDS)
+
     def retrieve_ids(self, variables: List[str]) -> None:
         """
         method to retrieve ids and translation data from the ids.json file
@@ -50,7 +55,6 @@ class TeamStats:
 
     def get_division(self, team: str) -> Optional[Union[Tuple[str, int], None]]:
         """
-        Optional[Union[Tuple[str, int], Tuple[None, None]]]
         method to get the division of the given team
 
         Args:
@@ -79,7 +83,7 @@ class TeamStats:
         if not request_date:
             request_date = date.today().strftime("%m/%d/%Y")
         standings = statsapi.standings_data("103,104", date=request_date).get(
-            "division_id"
+            division_id
         )
         if standings:
             standings = standings.get("teams")
@@ -108,47 +112,45 @@ class TeamStats:
                 drank, lrank = team["div_rank"], team["league_rank"]
         return win, loss, drank, gb, lrank
 
-    def get_next_game(self) -> Tuple[Optional[Union[str, None]], Dict]:
+    def get_next_game(
+        self, team: str
+    ) -> Optional[Union[Tuple[str, Dict], Tuple[None, None]]]:
         """
         method to get data about the team's next unstarted game
 
+        Args:
+            team: name of team (e.g. "New York Mets")
+
         Returns:
             gamePk: id of the team's next to-be-played game
             schedule: python dictionary with game details
         """
-        gamePk = statsapi.next_game(self.id)
+        id = team_to_id.get(team)
+        if not id:
+            return None, None
+        gamePk = statsapi.next_game(id)
         next = statsapi.schedule(game_id=gamePk)
         return gamePk, next[0]
 
-    def get_last_game(self) -> Tuple[Optional[Union[str, None]], Dict]:
+    def get_last_game(
+        self, team: str
+    ) -> Optional[Union[Tuple[str, Dict], Tuple[None, None]]]:
         """
         method to get data about the team's last completed game
 
+        Args:
+            team: name of team (e.g. "New York Mets")
+
         Returns:
             gamePk: id of the team's next to-be-played game
             schedule: python dictionary with game details
         """
-        gamePk = statsapi.last_game(self.id)
+        id = team_to_id.get(team)
+        if not id:
+            return None, None
+        gamePk = statsapi.last_game(id)
         next = statsapi.schedule(game_id=gamePk)
         return gamePk, next[0]
-
-    def __init__(self, team: str):
-        self.retrieve_ids(IDS)
-        self.name = team
-        self.abbreviation = team_to_abbreviation[self.name]
-        self.id = team_to_id[self.name]
-        self.divisionName, self.divisionId = self.get_division(self.name)
-        self.divisionStandings = self.get_division_standings(self.divisionId)
-        if self.divisionStandings:
-            (
-                self.wins,
-                self.loses,
-                self.divisionRank,
-                self.divisionGB,
-                self.leagueRank,
-            ) = self.get_team_standings(self.name, self.divisionStandings)
-        self.nextGameId, self.nextGame = self.get_next_game()
-        self.lastGameId, self.lastGame = self.get_last_game()
 
     def get_game_elo(self, gamePk: str) -> Dict:
         """
@@ -237,9 +239,10 @@ class TeamStats:
                 pitcher_id, group="pitching", type="yearByYear"
             ).get("stats")
             season_stats = {}
-            for year in seasons:
-                if year["season"] == season:
-                    season_stats = year["stats"]
+            if seasons:
+                for year in seasons:
+                    if year["season"] == season:
+                        season_stats = year["stats"]
             career_stats = statsapi.player_stat_data(
                 pitcher_id, group="pitching", type="career"
             )["stats"]
@@ -297,7 +300,7 @@ class TeamStats:
                 ops,
                 pitching_strikouts,
                 pitching_obp,
-            ) = (0, 0, 0, 0, 0, 0, 0)
+            ) = (0, 0, 0, 0, 0.0, 0, 0.0)
             for id in game_ids:
                 box = statsapi.boxscore_data(id)
                 isHome = box["home"]["team"]["id"] == team[1]
@@ -445,9 +448,10 @@ class TeamStats:
             game["home_name"],
             game["away_name"],
         )
-        h, a = self.get_win_percentage(gamePk)
-        game_df.at[0, "home-win-percentage"] = h
-        game_df.at[0, "away-win-percentage"] = a
+        ret = self.get_win_percentage(gamePk)
+        if ret:
+            game_df.at[0, "home-win-percentage"] = ret[0]
+            game_df.at[0, "away-win-percentage"] = ret[1]
         last10 = self.get_last10_stats(gamePk)
         for col in last10:
             game_df.at[0, col] = last10[col]
@@ -463,6 +467,120 @@ class TeamStats:
             f" in {round(function_time,2)} seconds."
         )
         return game_df
+
+    def get_data(
+        self,
+        start_date: str,
+        end_date: Optional[str] = None,
+        file_path: Optional[str] = None,
+        save_to_file: Optional[bool] = True,
+    ) -> pd.DataFrame:
+        """
+        method to get historical MLB data for the given team and save it to a file
+
+        Args:
+            start_date: first date to start retrieving game data from (YYYY-MM-DD)
+            end_date: last date to retrieve game data from (YYYY-MM-DD).
+                -> defaults to current day
+            file_path: path to save data file to for persistent storage
+            save_to_file: bool indicating if you wish the data to be stored
+
+        Returns:
+            data: python dataframe with the requested time range game data
+        """
+        if not end_date:
+            end_date = date.today().strftime("%m/%d/%Y")
+        if save_to_file:
+            formatted_end = end_date.replace("/", "-")
+            formatted_start = start_date.replace("/", "-")
+            if not file_path:
+                file_path = f"./data/mlb{formatted_start}_{formatted_end}.xlsx"
+        start_obj = datetime.strptime(start_date, "%m/%d/%Y")
+        end_obj = datetime.strptime(end_date, "%m/%d/%Y")
+        start_comp = start_obj.strftime("%Y-%m-%d")
+        end_comp = end_obj.strftime("%Y-%m-%d")
+        start_year = int(start_date[-4:])
+        end_year = int(end_date[-4:])
+        games = []
+        for year in range(start_year, end_year + 1):
+            year_start = f"01/01/{year}"
+            year_end = f"12/31/{year}"
+            possible_games = statsapi.schedule(start_date=year_start, end_date=year_end)
+            games.extend(
+                [
+                    game
+                    for game in possible_games
+                    if game.get("game_type") in ["R", "F", "D", "L", "W", "C", "P"]
+                    and game.get("status") == "Final"
+                    and start_comp <= game["game_date"] <= end_comp
+                ]
+            )
+        ids = [game.get("game_id") for game in games]
+        print(f"Found {str(len(ids))} games in range. Beginning data retrieval!")
+        data = self.declareDf()
+        for game_id in ids:
+            game_df = self.make_game_df(game_id)
+            data = pd.concat([data, game_df], ignore_index=True)
+        if save_to_file:
+            try:
+                data.to_excel(file_path, index=False)
+                print(f"Successfully saved data to {file_path}.")
+            except Exception as e:
+                print(f"An exception has occured while saving data to disk: {e}")
+        return data
+
+
+class TeamStats(LeagueStats):
+    def __init__(self, team: str):
+        self.retrieve_ids(IDS)
+        self.name = team
+        self.abbreviation = team_to_abbreviation[self.name]
+        self.id = team_to_id[self.name]
+        div = self.get_division(self.name)
+        if div:
+            self.divisionName, self.divisionId = div
+        self.divisionStandings = self.get_division_standings(self.divisionId)
+        if self.divisionStandings:
+            (
+                self.wins,
+                self.loses,
+                self.divisionRank,
+                self.divisionGB,
+                self.leagueRank,
+            ) = self.get_team_standings(self.name, self.divisionStandings)
+        next = self.get_next_game()
+        last = self.get_last_game()
+        if next:
+            self.nextGameId, self.nextGame = next
+        if last:
+            self.lastGameId, self.lastGame = last
+
+    def __repr__(self):
+        return f"{self.name} ({self.abbreviation})"
+
+    def get_next_game(self) -> Optional[Union[Tuple[str, Dict], Tuple[None, None]]]:
+        """
+        method to get data about the team's next unstarted game
+
+        Returns:
+            gamePk: id of the team's next to-be-played game
+            schedule: python dictionary with game details
+        """
+        gamePk = statsapi.next_game(self.id)
+        next = statsapi.schedule(game_id=gamePk)
+        return gamePk, next[0]
+
+    def get_last_game(self) -> Optional[Union[Tuple[str, Dict], Tuple[None, None]]]:
+        """
+        method to get data about the team's last completed game
+
+        Returns:
+            gamePk: id of the team's next to-be-played game
+            schedule: python dictionary with game details
+        """
+        gamePk = statsapi.last_game(self.id)
+        next = statsapi.schedule(game_id=gamePk)
+        return gamePk, next[0]
 
     def get_data(
         self,
@@ -533,6 +651,10 @@ class TeamStats:
 def main():
     nym = TeamStats("New York Mets")
     # call class methods...
+    mlb = LeagueStats()
+    print(mlb.get_last_game("New York Mets"))
+    ret = mlb.get_data(start_date="07/01/2023", end_date="07/01/2023", file_path="./data/tester.xlsx")
+    print(ret)
 
     # example getting date from June 1st until present
     # print(nym.get_data(start_date="06/01/2023"))
