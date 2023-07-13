@@ -59,6 +59,7 @@ class LeagueStats:
 
         Args:
             team: string team name (i.e. "New York mets")
+
         Returns:
             division name (e.g. "NL East"), division API id (e.g 201)
         """
@@ -339,7 +340,7 @@ class LeagueStats:
 
     def get_win_percentage(
         self, gamePk: str
-    ) -> Optional[Union[Tuple[float, float], Tuple[None, None]]]:
+    ) -> Optional[Union[Tuple[float, float], None]]:
         """
         method that will retrieve and calculate a team's winning percentage
 
@@ -357,13 +358,13 @@ class LeagueStats:
         home, away = game["home_name"], game["away_name"]
         home_div, away_div = self.get_division(home), self.get_division(away)
         if not home_div or not away_div:
-            return None, None
-        home_div, away_div = home_div[1], away_div[1]
+            return None
+        h_div, a_div = home_div[1], away_div[1]
         home_standings, away_standings = self.get_division_standings(
-            home_div, request_date=game_date
-        ), self.get_division_standings(away_div, request_date=game_date)
+            h_div, request_date=game_date
+        ), self.get_division_standings(a_div, request_date=game_date)
         if not home_standings or not away_standings:
-            return None, None
+            return None
         h_wins, h_loses, *_ = self.get_team_standings(home, home_standings)
         a_wins, a_loses, *_ = self.get_team_standings(away, away_standings)
         return round(h_wins / (h_loses + h_wins), 3), round(
@@ -649,15 +650,8 @@ class TeamStats(LeagueStats):
 
 
 def main():
-    nym = TeamStats("New York Mets")
-    # call class methods...
     mlb = LeagueStats()
-    print(mlb.get_last_game("New York Mets"))
-    ret = mlb.get_data(start_date="07/01/2023", end_date="07/01/2023", file_path="./data/tester.xlsx")
-    print(ret)
-
-    # example getting date from June 1st until present
-    # print(nym.get_data(start_date="06/01/2023"))
+    # call class methods...
 
 
 if __name__ == "__main__":
