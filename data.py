@@ -1,15 +1,19 @@
 from typing import List, Tuple, Optional, Union, Dict
 from sklearn.preprocessing import MinMaxScaler  # type: ignore
+from sklearn.impute import SimpleImputer # type: ignore
 from datetime import datetime, timedelta, date
 import lightgbm as lgb  # type: ignore
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
 import statsapi  # type: ignore
+import contextlib
+import pickle
 import time
 import csv
 import json
 import subprocess
 import os
+import io
 
 PATH_TO_ELO = "./data/mlb_elo.csv"
 IDS = [
@@ -22,6 +26,8 @@ IDS = [
     "id_to_division",
     "elo_abbreviation",
 ]
+MODELS = {"mets6year": ["mets6year.txt", "mets6year_scaler.pkl"],
+          "mlb2023": ["mlb2023.txt", "mlb2023_scaler.pkl"]}
 
 # to satisfy type checker...
 id_to_team: Dict[str, str] = {}
@@ -531,22 +537,26 @@ class LeagueStats:
                 print(f"An exception has occured while saving data to disk: {e}")
         return data
 
-    def get_array(self, gamePk: str) -> np.ndarray:
+    def get_array(
+        self, gamePk: str, model_name: str
+    ) -> Optional[Union[Tuple[None, str], np.ndarray]]:
         """
         method to get an array of a game's features to make predictions with
             -> specific data augmentation steps described in depth in notebook
 
         Args:
             gamePk: id of the game to get features from
+            model_name: name of the model to be used 
+                -> must be valid entry in MODELS
 
         Returns:
             x_pred: features array to give to model
         """
-        df = self.make_game_df(gamePk)
-        print(df)
+        with contextlib.redirect_stdout(io.StringIO()):
+            df = self.make_game_df(gamePk)
         df.drop(
             columns=["game-id", "date", "home-team", "away-team", "did-home-win"],
-            inplace=True,
+            inplace=True
         )
         order1 = [
             "home-win-percentage",
@@ -584,21 +594,12 @@ class LeagueStats:
             "home-last10-avg-strikeouts",
             "away-last10-avg-strikeouts",
             "home-starter-career-era",
-            "away-starter-career-era",
+            "away-starter-career-era"
         ]
         df = df[order1]
-        df = df.replace('None', np.nan)
-        scaler = MinMaxScaler()
-
-        # TODO: generalize to other models/datasets
-        data = pd.read_excel('data/seasons/2023.xlsx')
-        data.drop(columns=['game-id', 'date', 'home-team', 'away-team'], inplace=True)
-        data = data.dropna(subset=['did-home-win'])
-        data['did-home-win'] = data['did-home-win'].astype(int)
-        data = data[order1]
-        data = data.dropna(thresh=df.shape[1] - 10)
-
-        scaler.fit(df)
+        path_to_scaler = "./models/scalers/" + MODELS[model_name][1]
+        with open(path_to_scaler, 'rb') as file:
+            scaler = pickle.load(file)
         columns_to_scale = [
             "home-starter-season-era",
             "away-starter-season-era",
@@ -623,25 +624,29 @@ class LeagueStats:
             "home-starter-career-era",
             "away-starter-career-era",
         ]
+        for col in df[columns_to_scale].columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
         df[columns_to_scale] = scaler.transform(df[columns_to_scale])
         x_pred = df.values
         return x_pred
 
-    def next_game_array(self, team: str) -> Optional[Union[np.ndarray, None]]:
+    def next_game_array(self, team: str, model_name: str) -> Optional[Union[np.ndarray, Tuple[None, str]]]:
         """
         method to produce features array for a team's next unplayed game
 
         Args:
             team: string of team's name (e.g. "New York Mets")
+            model_name: name of the model to be used 
+                -> must be valid entry in MODELS
 
         Returns:
             x_pred: features array to give to model
         """
         next = self.get_next_game(team)
         if not next or not next[0]:
-            return None
+            return None, f"Error retrieving data for {team}'s next game."
         id = next[0]
-        x_pred = self.get_array(id)
+        x_pred = self.get_array(id, model_name)
         return x_pred
 
     def predict_next_game(
@@ -651,8 +656,8 @@ class LeagueStats:
         method to make prediction on team's next game using specified model
 
         Args:
-            model: string of model's name
-                -> must be in ./models/
+            model_name: string of model's name
+                -> must be in ./models/ and entry in MODELS
             team: string of team's name
 
         Returns:
@@ -662,13 +667,15 @@ class LeagueStats:
 
             or None, <error-msg>
         """
-        x_pred = self.next_game_array(team)
-        if not x_pred:
+        if model_name not in MODELS:
+            return None, f"{model_name} not found as valid model."
+        x_pred = self.next_game_array(team, model_name)
+        if x_pred is None:
             return (
                 None,
                 f"Failed to retrieve information about next game for the {team}.",
             )
-        model_path = os.path.join("./models/", model_name)
+        model_path = os.path.join("./models/", model_name) + ".txt"
         if not os.path.exists(model_path):
             return (
                 None,
@@ -677,7 +684,7 @@ class LeagueStats:
             )
         model = lgb.Booster(model_file=model_path)
         prediction = model.predict(x_pred)
-        prediction = int(prediction[0])
+        prediction = float(prediction[0])
         next_game_ret = self.get_next_game(team)
         if not next_game_ret or not next_game_ret[1]:
             return (
@@ -821,12 +828,13 @@ class TeamStats(LeagueStats):
                 print(f"An exception has occured while saving data to disk: {e}")
         return data
 
-    def next_game_array(self) -> Optional[Union[np.ndarray, None]]:
+    def next_game_array(self, model_name: str) -> Optional[Union[np.ndarray, None]]:
         """
         method to produce features array for the team's next unplayed game
 
         Args:
-            team: string of team's name (e.g. "New York Mets")
+            model_name: name of the model to be used 
+                -> must be valid entry in MODELS
 
         Returns:
             x_pred: features array to give to model
@@ -835,15 +843,16 @@ class TeamStats(LeagueStats):
         if not next or not next[0]:
             return None
         id = next[0]
-        x_pred = self.get_array(id)
+        x_pred = self.get_array(id, model_name)
         return x_pred
 
 
 def main():
     mlb = LeagueStats()
     # call class methods...
-    
-    mlb.predict_next_game("mlb2023.txt", "New York Mets")
+
+    print(mlb.predict_next_game("mlb2023", "New York Mets"))
+
 
 if __name__ == "__main__":
     main()
