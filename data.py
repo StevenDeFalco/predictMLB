@@ -1,6 +1,6 @@
 from typing import List, Tuple, Optional, Union, Dict
 from sklearn.preprocessing import MinMaxScaler  # type: ignore
-from sklearn.impute import SimpleImputer # type: ignore
+from sklearn.impute import SimpleImputer  # type: ignore
 from datetime import datetime, timedelta, date
 import lightgbm as lgb  # type: ignore
 import pandas as pd  # type: ignore
@@ -26,8 +26,10 @@ IDS = [
     "id_to_division",
     "elo_abbreviation",
 ]
-MODELS = {"mets6year": ["mets6year.txt", "mets6year_scaler.pkl"],
-          "mlb2023": ["mlb2023.txt", "mlb2023_scaler.pkl"]}
+MODELS = {
+    "mets6year": ["mets6year.txt", "mets6year_scaler.pkl"],
+    "mlb2023": ["mlb2023.txt", "mlb2023_scaler.pkl"],
+}
 
 # to satisfy type checker...
 id_to_team: Dict[str, str] = {}
@@ -546,7 +548,7 @@ class LeagueStats:
 
         Args:
             gamePk: id of the game to get features from
-            model_name: name of the model to be used 
+            model_name: name of the model to be used
                 -> must be valid entry in MODELS
 
         Returns:
@@ -556,7 +558,7 @@ class LeagueStats:
             df = self.make_game_df(gamePk)
         df.drop(
             columns=["game-id", "date", "home-team", "away-team", "did-home-win"],
-            inplace=True
+            inplace=True,
         )
         order1 = [
             "home-win-percentage",
@@ -594,11 +596,11 @@ class LeagueStats:
             "home-last10-avg-strikeouts",
             "away-last10-avg-strikeouts",
             "home-starter-career-era",
-            "away-starter-career-era"
+            "away-starter-career-era",
         ]
         df = df[order1]
         path_to_scaler = "./models/scalers/" + MODELS[model_name][1]
-        with open(path_to_scaler, 'rb') as file:
+        with open(path_to_scaler, "rb") as file:
             scaler = pickle.load(file)
         columns_to_scale = [
             "home-starter-season-era",
@@ -625,18 +627,20 @@ class LeagueStats:
             "away-starter-career-era",
         ]
         for col in df[columns_to_scale].columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+            df[col] = pd.to_numeric(df[col], errors="coerce")
         df[columns_to_scale] = scaler.transform(df[columns_to_scale])
         x_pred = df.values
         return x_pred
 
-    def next_game_array(self, team: str, model_name: str) -> Optional[Union[np.ndarray, Tuple[None, str]]]:
+    def next_game_array(
+        self, team: str, model_name: str
+    ) -> Optional[Union[np.ndarray, Tuple[None, str]]]:
         """
         method to produce features array for a team's next unplayed game
 
         Args:
             team: string of team's name (e.g. "New York Mets")
-            model_name: name of the model to be used 
+            model_name: name of the model to be used
                 -> must be valid entry in MODELS
 
         Returns:
@@ -704,6 +708,7 @@ class LeagueStats:
         game_info["national_broadcasts"] = next_game["national_broadcasts"]
         game_info["series_status"] = next_game["series_status"]
         game_info["summary"] = next_game["summary"]
+        game_info["game_id"] = next_game["game_id"]
         if prediction >= 0.5:
             winner = game_info["home"]
         else:
@@ -833,7 +838,7 @@ class TeamStats(LeagueStats):
         method to produce features array for the team's next unplayed game
 
         Args:
-            model_name: name of the model to be used 
+            model_name: name of the model to be used
                 -> must be valid entry in MODELS
 
         Returns:
