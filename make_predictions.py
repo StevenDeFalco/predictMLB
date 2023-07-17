@@ -1,10 +1,9 @@
 from get_odds import get_todays_odds
 from data import LeagueStats
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
 import pandas as pd  # type: ignore
 import statsapi  # type: ignore
-import pytz
 
 mlb = LeagueStats()
 
@@ -25,7 +24,11 @@ def update_row(row: pd.Series) -> pd.Series:
     if game["status"] != "Final":
         return row
     actual_winner = game.get("winning_team")
-    prediction_accuracy = 1.0 if (actual_winner == predicted_winner) else 0.0
+    prediction_accuracy = (
+        1.0
+        if (actual_winner == predicted_winner)
+        else (0.0 if actual_winner is not None else None)
+    )
     updated_row = row.copy()
     # update any row information that you want knowing the game is complete
     updated_row["prediction_accuracy"] = prediction_accuracy
@@ -54,19 +57,9 @@ def load_unchecked_predictions_from_excel(
     """
     try:
         df = pd.read_excel(file_name)
-        df["datetime"] = pd.to_datetime(df["datetime"])
-        df["datetime"] = df["datetime"].dt.to_pydatetime()
         df_missing_accuracy = df[df["prediction_accuracy"].isnull()]
-        current_datetime = datetime.now()
-        six_hours_ago = current_datetime - timedelta(hours=6)
-        six_hours_ago = six_hours_ago.astimezone(pytz.utc)
-        # filter rows with datetime before 6 hours ago or yesterday
-        df_filtered = df_missing_accuracy[
-            (df_missing_accuracy["datetime"].dt.to_pydatetime() < six_hours_ago)
-        ]
-        df_filtered = df_filtered.apply(update_row, axis=1)
-        df.loc[df_missing_accuracy.index, "datetime"] = df_missing_accuracy["datetime"].dt.tz_localize(None)
-        df.update(df_filtered)
+        df_missing_accuracy = df_missing_accuracy.apply(update_row, axis=1)
+        df.update(df_missing_accuracy)
         df.to_excel(file_name, index=False)
         return df
     except FileNotFoundError:
@@ -84,6 +77,7 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
     Returns:
         game_predictions: list of dictionaries with prediction + odds information
     """
+    print("in generate fn")
     if date is not datetime.now():
         # NOT IMPLEMENTED: generating predictions for future days
         pass
@@ -93,10 +87,22 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
         df = pd.read_excel(file_name)
         existing_dates = pd.to_datetime(df["datetime"]).dt.date.unique()
         if date.date() in existing_dates:
-            predictions = df.loc[
+            mask = (pd.to_datetime(df["datetime"]).dt.date == date.date()) & (
+                pd.to_datetime(df["prediction_generation_time"]).dt.date == date.date()
+            )
+            filtered_df = df[mask]
+            print(len(filtered_df))
+            if len(filtered_df) > 0:
+                predictions = filtered_df.to_dict("records")
+                return predictions
+            else:
+                new_mask = pd.to_datetime(df["datetime"]).dt.date == date.date()
+                print(new_mask)
+                df = df[~new_mask]
+            """predictions = df.loc[
                 pd.to_datetime(df["datetime"]).dt.date == date.date()
             ].to_dict("records")
-            return predictions
+            return predictions"""
     except FileNotFoundError:
         df = pd.DataFrame()
 
@@ -104,10 +110,11 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
     game_predictions: List[Dict] = []
     for game in all_games:
         try:
-            winner, prediction, info = mlb.predict_next_game(
-                "mlb2023", game["home_team"]
-            )
-        except:
+            ret = mlb.predict_next_game("mlb2023", game["home_team"])
+            if ret is None or ret[0] is None:
+                continue
+            winner, prediction, info = ret[0], ret[1], ret[2]
+        except Exception as _:
             continue
         if not winner:
             continue
@@ -122,6 +129,7 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
         info["home_odds_bookmaker"] = game.get(f"{home}_bookmaker")
         info["away_odds_bookmaker"] = game.get(f"{away}_bookmaker")
         info["odds_retrieval_time"] = odds_time
+        info["prediction_generation_time"] = datetime.now()
         info["prediction_accuracy"] = None
         info["home_score"] = None
         info["away_score"] = None
@@ -153,6 +161,7 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
         "series_status",
         "national_broadcasts",
         "odds_retrieval_time",
+        "prediction_generation_time",
         "datetime",
         "game_id",
         "summary",
@@ -166,11 +175,9 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
 
 if __name__ == "__main__":
     file_name = "./data/predictions.xlsx"
-    """try:
+    try:
         df = load_unchecked_predictions_from_excel(file_name)
     except Exception as e:
         print(f"Error checking past predictions in {file_name}. {e}")
     finally:
-        generate_daily_predictions()"""
-    df = load_unchecked_predictions_from_excel(file_name)
-    generate_daily_predictions()
+        generate_daily_predictions()
