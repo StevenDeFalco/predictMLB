@@ -59,7 +59,6 @@ def split_date_range(start_date, end_date):
         intervals.append((current_date, interval_end))
         current_date = interval_end + timedelta(days=1)
 
-    print(intervals)
     return intervals
 
 
