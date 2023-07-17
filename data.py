@@ -1,6 +1,4 @@
 from typing import List, Tuple, Optional, Union, Dict
-from sklearn.preprocessing import MinMaxScaler  # type: ignore
-from sklearn.impute import SimpleImputer  # type: ignore
 from datetime import datetime, timedelta, date
 import lightgbm as lgb  # type: ignore
 import pandas as pd  # type: ignore
@@ -376,9 +374,13 @@ class LeagueStats:
             return None
         h_wins, h_loses, *_ = self.get_team_standings(home, home_standings)
         a_wins, a_loses, *_ = self.get_team_standings(away, away_standings)
-        return round(h_wins / (h_loses + h_wins), 3), round(
-            a_wins / (a_loses + a_wins), 3
+        home_pct = (
+            round(h_wins / (h_loses + h_wins), 3) if (h_loses + h_wins) > 0 else 0.000
         )
+        away_pct = (
+            round(h_wins / (a_loses + a_wins), 3) if (a_loses + a_wins) > 0 else 0.000
+        )
+        return home_pct, away_pct
 
     def declareDf(self) -> pd.DataFrame:
         """
