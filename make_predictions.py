@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 from get_odds import get_todays_odds
 from data import LeagueStats
 from datetime import datetime
@@ -5,6 +7,7 @@ from typing import Dict, List, Optional
 import pandas as pd  # type: ignore
 import statsapi  # type: ignore
 
+MODELS = ["mlb3year", "mlb2023", "mets6year"]
 mlb = LeagueStats()
 
 
@@ -66,18 +69,21 @@ def load_unchecked_predictions_from_excel(
         return None
 
 
-def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
+def generate_daily_predictions(
+    model: str, date: datetime = datetime.now()
+) -> List[Dict]:
     """
     function to generate predictions for one day of MLB games...
     ...and save them with other pertinent game information
 
     Args:
+        model: model to use
+            -> must be defined in MODELS
         date: datetime object representing day to predict on
 
     Returns:
         game_predictions: list of dictionaries with prediction + odds information
     """
-    print("in generate fn")
     if date is not datetime.now():
         # NOT IMPLEMENTED: generating predictions for future days
         pass
@@ -91,18 +97,12 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
                 pd.to_datetime(df["prediction_generation_time"]).dt.date == date.date()
             )
             filtered_df = df[mask]
-            print(len(filtered_df))
             if len(filtered_df) > 0:
                 predictions = filtered_df.to_dict("records")
                 return predictions
             else:
                 new_mask = pd.to_datetime(df["datetime"]).dt.date == date.date()
-                print(new_mask)
                 df = df[~new_mask]
-            """predictions = df.loc[
-                pd.to_datetime(df["datetime"]).dt.date == date.date()
-            ].to_dict("records")
-            return predictions"""
     except FileNotFoundError:
         df = pd.DataFrame()
 
@@ -120,6 +120,7 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
             continue
         home, away = info["home"], info["away"]
         info["predicted_winner"] = winner
+        info["model"] = model
         info["predicted_winner_location"] = "home" if (winner is home) else "away"
         info["prediction_value"] = prediction
         info["time"] = game["time"]
@@ -147,6 +148,7 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
         "away",
         "away_probable",
         "predicted_winner",
+        "model",
         "favorite",
         "home_odds",
         "home_odds_bookmaker",
@@ -173,11 +175,28 @@ def generate_daily_predictions(date: datetime = datetime.now()) -> List[Dict]:
     return game_predictions
 
 
-if __name__ == "__main__":
+def main():
     file_name = "./data/predictions.xlsx"
     try:
         df = load_unchecked_predictions_from_excel(file_name)
     except Exception as e:
         print(f"Error checking past predictions in {file_name}. {e}")
-    finally:
-        generate_daily_predictions()
+
+    model_list = ", ".join([str(item) for item in MODELS])
+    model = input(f"Select model to make today's predictions ({model_list}): ")
+    success = False
+    while not success:
+        if model in MODELS:
+            success = True
+        else:
+            model = input(
+                f"{model} is not a valid model. "
+                f"Please choose one of the following: {model_list}. "
+            )
+            success = False
+    print(f"Making predictions using {model} model!")
+    generate_daily_predictions(model)
+
+
+if __name__ == "__main__":
+    main()
