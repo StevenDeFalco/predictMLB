@@ -14,7 +14,7 @@ def make_request():
     # load environment variables from .env
     load_dotenv()
     # access the API key
-    apikey = os.getenv("API_KEY")
+    apikey = os.getenv("ODDS_API_KEY")
     # API endpoint
     url = "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds"
     # query parameters
