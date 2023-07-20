@@ -108,7 +108,9 @@ def make_twelve_hour(time):
     if hour == 0:
         hour = 12
     elif hour > 12:
+        ending = " pm"
         hour -= 12
+    elif hour == 12:
         ending = " pm"
     time_formatted = f"{hour:02d}:{minute:02d}{ending}"
     return time_formatted
