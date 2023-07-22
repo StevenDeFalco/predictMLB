@@ -8,6 +8,8 @@ import pandas as pd  # type: ignore
 import statsapi  # type: ignore
 
 MODELS = ["mlb3year", "mlb2023", "mets6year"]
+global_correct = 0
+global_wrong = 0
 mlb = LeagueStats()
 
 
@@ -21,6 +23,7 @@ def update_row(row: pd.Series) -> pd.Series:
     Returns:
         updated_row: The updated row with prediction accuracy and other information.
     """
+    global global_correct, global_wrong
     predicted_winner = row["predicted_winner"]
     id = row["game_id"]
     game = statsapi.schedule(game_id=id)[0]
@@ -32,6 +35,19 @@ def update_row(row: pd.Series) -> pd.Series:
         if (actual_winner == predicted_winner)
         else (0.0 if actual_winner is not None else None)
     )
+    losing_team = row["home"] if actual_winner == row["away"] else row["away"]
+    if prediction_accuracy == 1.0:
+        global_correct += 1
+        print(
+            f"Correct! Your prediction - {predicted_winner} - "
+            f"defeated the {losing_team}."
+        )
+    else:
+        global_wrong += 1
+        print(
+            f"Wrong! Your prediction - {predicted_winner} - "
+            f"lost to the {actual_winner}."
+        )
     updated_row = row.copy()
     # update any row information that you want knowing the game is complete
     updated_row["prediction_accuracy"] = prediction_accuracy
@@ -62,6 +78,13 @@ def load_unchecked_predictions_from_excel(
         df = pd.read_excel(file_name)
         df_missing_accuracy = df[df["prediction_accuracy"].isnull()]
         df_missing_accuracy = df_missing_accuracy.apply(update_row, axis=1)
+        if (global_correct + global_wrong) > 0:
+            percentage = global_correct / (global_correct + global_wrong)
+            print(
+                f"Prediction accuracy for recently checked games: "
+                f"{str(global_correct)}/{str(global_wrong + global_correct)} "
+                f"({int(100 * (round(percentage, 2)))}%)"
+            )
         df.update(df_missing_accuracy)
         df.to_excel(file_name, index=False)
         return df
