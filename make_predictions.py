@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from tweet_generator import gen_prediction_tweet, send_result_tweet
+from server.tweet_generator import gen_prediction_tweet, gen_result_tweet
 from get_odds import get_todays_odds
 from data import LeagueStats
 from datetime import datetime, timedelta
@@ -114,7 +114,7 @@ def load_unchecked_predictions_from_excel(
                     upset_loser,
                     upset_l_odds,
                 ) = global_biggest_upset
-                res = send_result_tweet(
+                res = gen_result_tweet(
                     correct_wrong,
                     percentage,
                     is_upset,
