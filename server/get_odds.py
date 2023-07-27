@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
+from typing import Dict, Tuple, Optional
 from dotenv import load_dotenv  # type: ignore
-import requests
+import requests  # type: ignore
 import calendar
-import pytz
+import pytz  # type: ignore
 import json
 import os
 
@@ -10,9 +11,9 @@ import os
 REQUEST_COOLDOWN = 3600  # 1 hour
 
 
-def make_request():
+def make_request() -> Optional[Tuple[Optional[Dict], Optional[datetime]]]:
     # load environment variables from .env
-    load_dotenv()
+    load_dotenv("../.env")
     # access the API key
     apikey = os.getenv("ODDS_API_KEY")
     # API endpoint
@@ -24,8 +25,9 @@ def make_request():
         "markets": "h2h",
         "oddsFormat": "american",
     }
-    # data file
-    data_file = "./data/todays_odds.json"
+    data: Dict = None
+    request_time: datetime = None
+    data_file = "../data/todays_odds.json"
     if os.path.exists(data_file):
         modified_time = os.path.getmtime(data_file)
         current_time = datetime.now().timestamp()
@@ -61,10 +63,12 @@ def make_request():
             request_time = datetime.now()
         else:
             print("Error occureed. Status code: ", response.status_code)
+    if data is None or request_time is None:
+        return None
     return data, request_time
 
 
-def get_favorite(game):
+def get_favorite(game: Dict) -> Optional[str]:
     """function to calculate the team favorited to win the game"""
     outcomes = game["bookmakers"][0]["markets"][0]["outcomes"]
     favorite = None
@@ -77,7 +81,7 @@ def get_favorite(game):
     return favorite
 
 
-def get_best_odds(game):
+def get_best_odds(game: Dict) -> Dict:
     best_odds = {}
     for bookmaker in game["bookmakers"]:
         for market in bookmaker["markets"]:
@@ -151,14 +155,18 @@ def process_data(data):
         games.append(game_info)
     return games
 
+
 def get_todays_odds():
     """
-    function to get the odds of games occurring today 
+    function to get the odds of games occurring today
 
-    Returns: 
+    Returns:
         games: list of python dictionaries representing individual MLB games
         time: time of the request to get the odds (most recent odds retrieval)
     """
-    data, time = make_request() 
+    res = make_request()
+    if not res:
+        return None
+    data, time = res
     games = process_data(data)
     return games, time
