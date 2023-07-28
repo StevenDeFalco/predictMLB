@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 from server.tweet_generator import gen_prediction_tweet, gen_result_tweet
-from get_odds import get_todays_odds
+from server.get_odds import get_todays_odds # type: ignore
 from data import LeagueStats
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
