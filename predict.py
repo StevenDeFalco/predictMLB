@@ -1,15 +1,18 @@
 """COPY OF ./make_predictions.py WITH CHANGES TO MAKE IT A SUITABLE RECURRING PROCESS"""
 
-from server.tweet_generator import gen_prediction_tweet, gen_result_tweet
-from get_odds import get_todays_odds
+from server.tweet_generator import gen_result_tweet
+from server.get_odds import get_todays_odds
 from data import LeagueStats
-from datetime import datetime, timedelta
+from server.prep_tweet import prepare
+from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
-from croniter import croniter  # type: ignore
 import pandas as pd  # type: ignore
 import subprocess
 import statsapi  # type: ignore
+import time
 import sys
+import os
 
 MODELS = ["mlb3year", "mlb2023", "mets6year"]
 selected_model = MODELS[0]
@@ -127,11 +130,32 @@ def load_unchecked_predictions_from_excel(
                     upset_w_odds,
                     upset_l_odds,
                 )
+            else:
+                res = (
+                    f"Of yesterday's MLB games, I predicted {correct_wrong} correctly, "
+                    f"and thus had a prediction accuracy of {percentage}. "
+                )
+            if res:
                 try:
-                    subprocess.run(["python3", "./server/tweet.py", res], check=True)
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    file_name = os.path.join(script_dir, "server/tweet.py")
+                    process = subprocess.Popen(
+                        ["python3", file_name, res],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    process.wait()
+                    stdout, stderr = process.communicate()
+                    print(stdout.strip())
+                    print(stderr.strip())
+                    return_code = process.poll()
+                    if return_code != 0:
+                        print(f"Error calling tweet.py: return code={return_code}")
                 except subprocess.CalledProcessError as e:
                     print(
-                        f"\n{datetime.now().strftime('%D - %T')}... Error tweeting results\n{e}"
+                        f"{datetime.now().strftime('%D - %T')}... "
+                        f"\nError tweeting results{e}\n"
                     )
         df.update(df_missing_accuracy)
         df.to_excel(file_name, index=False)
@@ -141,7 +165,7 @@ def load_unchecked_predictions_from_excel(
 
 
 def generate_daily_predictions(
-    model: str, date: datetime = datetime.now()
+    model: str, scheduler, date: datetime = datetime.now()
 ) -> List[Dict]:
     """
     function to generate predictions for one day of MLB games...
@@ -158,7 +182,8 @@ def generate_daily_predictions(
     if date is not datetime.now():
         # NOT IMPLEMENTED: generating predictions for future days
         pass
-    file_name = "./data/predictions.xlsx"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_name = os.path.join(script_dir, "data/predictions.xlsx")
 
     try:
         df = pd.read_excel(file_name)
@@ -208,33 +233,16 @@ def generate_daily_predictions(
         info["winning_pitcher"] = None
         info["losing_pitcher"] = None
         info["tweeted?"] = False
-        """if winner == home:
-            winner_odds = info["home_odds"]
-            loser, loser_odds = away, info["away_odds"]
-            w_bookmaker = info["home_odds_bookmaker"]
-            l_bookmaker = info["away_odds_bookmaker"]
-        else:  # winner == away
-            winner_odds = info["away_odds"]
-            loser, loser_odds = home, info["home_odds"]
-            w_bookmaker = info["away_odds_bookmaker"]
-            l_bookmaker = info["home_odds_bookmaker"]
-        tweet = gen_prediction_tweet(
-            winner,
-            loser,
-            info["time"],
-            info["venue"],
-            winner_odds,
-            loser_odds,
-            w_bookmaker,
-            l_bookmaker,
-        )"""
         info["tweet"] = None
         tweet_time = pd.to_datetime(info["datetime"]) - timedelta(hours=1)
         info["time_to_tweet"] = tweet_time.replace(tzinfo=None)
-        cron_schedule = tweet_time.strftime("%M %H %d %m *")
-        cron = croniter(cron_schedule)
-        next_execution_time = cron.get_next(datetime)
-        croniter()
+        # add to schedule
+        scheduler.add_job(prepare, args=[info], trigger="date", run_date=tweet_time)
+        print(
+            f"{datetime.now().strftime('%D - %T')}... \nAdded game "
+            f"({info['away']} @ {info['home']}) to tweet schedule "
+            f"for {tweet_time.strftime('%T')}\n"
+        )
         game_predictions.append(info)
 
     df_new = pd.DataFrame(game_predictions)
@@ -277,21 +285,37 @@ def generate_daily_predictions(
     return game_predictions
 
 
-def main():
-    global selected_model
-    if len(sys.argv) > 1 and sys.argv[1] in MODELS:
-        selected_model = sys.argv[1]
-    file_name = "./data/predictions.xlsx"
+def check_and_predict(selected_model):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_name = os.path.join(script_dir, "data/predictions.xlsx")
     try:
-        df = load_unchecked_predictions_from_excel(file_name)
+        load_unchecked_predictions_from_excel(file_name)
     except Exception as e:
         print(f"Error checking past predictions in {file_name}. {e}")
+    daily_scheduler = BackgroundScheduler(timezone=timezone(timedelta(hours=-4)))
     print(
         f"{datetime.now().strftime('%D - %T')}... "
-        f"Making predictions using {selected_model} model"
+        f"\nMaking predictions using {selected_model} model\n"
     )
-    generate_daily_predictions(selected_model)
+    generate_daily_predictions(selected_model, daily_scheduler)
+    daily_scheduler.start()
+    print(f"{datetime.now().strftime('%D - %T')}... Scheduled Jobs")
+    for job in daily_scheduler.get_jobs():
+        print(f"\nJob Name: {job.name}")
+        print(f"Next Execution Time: {job.next_run_time}")
+        print(f"Trigger: {job.trigger}\n")
+    try:
+        while True:
+            time.sleep(1)
+            if not daily_scheduler.get_jobs():
+                print(
+                    f"{datetime.now().strftime('%D - %T')}... "
+                    f"\nAll jobs complete. Exiting\n"
+                )
+                break
+    finally:
+        daily_scheduler.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    check_and_predict(MODELS[0])
