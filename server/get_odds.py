@@ -13,7 +13,9 @@ REQUEST_COOLDOWN = 3600  # 1 hour
 
 def make_request() -> Optional[Tuple[Optional[Dict], Optional[datetime]]]:
     # load environment variables from .env
-    load_dotenv("../.env")
+    parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    env_file_path = os.path.join(parent_dir, ".env")
+    load_dotenv(env_file_path)
     # access the API key
     apikey = os.getenv("ODDS_API_KEY")
     # API endpoint
@@ -27,7 +29,7 @@ def make_request() -> Optional[Tuple[Optional[Dict], Optional[datetime]]]:
     }
     data: Dict = None
     request_time: datetime = None
-    data_file = "../data/todays_odds.json"
+    data_file = os.path.join(parent_dir, "data/todays_odds.json")
     if os.path.exists(data_file):
         modified_time = os.path.getmtime(data_file)
         current_time = datetime.now().timestamp()
@@ -82,7 +84,7 @@ def get_favorite(game: Dict) -> Optional[str]:
 
 
 def get_best_odds(game: Dict) -> Dict:
-    best_odds = {}
+    best_odds: Dict = {}
     for bookmaker in game["bookmakers"]:
         for market in bookmaker["markets"]:
             if market["key"] == "h2h":
