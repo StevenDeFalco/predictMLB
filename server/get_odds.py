@@ -10,10 +10,11 @@ import os
 # minimum time between requests
 REQUEST_COOLDOWN = 3600  # 1 hour
 
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 
 def make_request() -> Optional[Tuple[Optional[Dict], Optional[datetime]]]:
     # load environment variables from .env
-    parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     env_file_path = os.path.join(parent_dir, ".env")
     load_dotenv(env_file_path)
     # access the API key
@@ -152,7 +153,7 @@ def process_data(data):
         best_odds = get_best_odds(game)
         game_info["favorite"] = get_favorite(game)
         for team, odds_info in best_odds.items():
-            game_info[f"{team}_odds"] = odds_info["odds"]
+            game_info[f"{team}_odds"] = str(odds_info["odds"])
             game_info[f"{team}_bookmaker"] = odds_info["bookmaker"]
         games.append(game_info)
     return games
