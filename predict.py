@@ -257,7 +257,7 @@ def generate_daily_predictions(
     )
     for game in all_games:
         try:
-            ret = mlb.predict_next_game("mlb2023", game["home_team"])
+            ret = mlb.predict_next_game(selected_model, game["home_team"])
             if ret is None or ret[0] is None:
                 continue
             winner, prediction, info = ret[0], ret[1], ret[2]
