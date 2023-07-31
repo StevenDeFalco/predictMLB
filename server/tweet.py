@@ -5,6 +5,7 @@ import sys
 import os
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+cwd = os.path.dirname(os.path.abspath(__file__))
 env_file_path = os.path.join(parent_dir, ".env")
 
 load_dotenv(env_file_path)
@@ -26,6 +27,7 @@ if len(sys.argv) > 1:
 
     print(f"\n{datetime.now().strftime('%D - %T')}... \nTweeting: '{tweet}'\n")
 
+    tweet_log = os.path.join(cwd, "tweets.txt")
     with open("tweets.txt", "a") as f:
         f.write(tweet + "\n")
 
