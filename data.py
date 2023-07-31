@@ -5,15 +5,14 @@ import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
 import statsapi  # type: ignore
 import contextlib
+import subprocess
 import pickle
 import time
 import csv
 import json
-import subprocess
 import os
 import io
 
-PATH_TO_ELO = "./data/mlb_elo.csv"
 IDS = [
     "id_to_team",
     "team_to_id",
@@ -27,6 +26,7 @@ IDS = [
 MODELS = {
     "mets6year": ["mets6year.txt", "mets6year_scaler.pkl"],
     "mlb2023": ["mlb2023.txt", "mlb2023_scaler.pkl"],
+    "mlb3year": ["mlb3year.txt", "mlb3year_scaler.pkl"],
 }
 
 # to satisfy type checker...
@@ -38,6 +38,10 @@ division_teams: Dict[str, List[str]] = {}
 division_to_id: Dict[str, int] = {}
 id_to_division: Dict[int, str] = {}
 elo_abbreviation: Dict[str, str] = {}
+
+cwd = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+PATH_TO_ELO = os.path.join(cwd, "data/mlb_elo.csv")
 
 
 class LeagueStats:
@@ -52,9 +56,11 @@ class LeagueStats:
         Args:
             variables: List of strings of identifiers to retrieve
         """
-        if not os.path.isfile("./data/ids.json"):
-            subprocess.run(["python3", "generate_ids.py"])
-        with open("./data/ids.json", "r") as f:
+        ids_filepath = os.path.join(cwd, "data/ids.json")
+        script_path = os.path.join(cwd, "data/generate_ids.py")
+        if not os.path.isfile(ids_filepath):
+            subprocess.run(["python3", script_path])
+        with open(ids_filepath, "r") as f:
             data = json.load(f)
         for key in variables:
             if key in data:
@@ -601,7 +607,8 @@ class LeagueStats:
             "away-starter-career-era",
         ]
         df = df[order1]
-        path_to_scaler = "./models/scalers/" + MODELS[model_name][1]
+        scalers = os.path.join(cwd, 'models/scalers')
+        path_to_scaler = os.path.join(scalers, MODELS[model_name][2])
         with open(path_to_scaler, "rb") as file:
             scaler = pickle.load(file)
         columns_to_scale = [
@@ -857,8 +864,6 @@ class TeamStats(LeagueStats):
 def main():
     mlb = LeagueStats()
     # call class methods...
-
-    print(mlb.predict_next_game("mlb2023", "New York Mets"))
 
 
 if __name__ == "__main__":
