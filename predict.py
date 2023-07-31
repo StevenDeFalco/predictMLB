@@ -1,27 +1,34 @@
-"""COPY OF ./make_predictions.py WITH CHANGES TO MAKE IT A SUITABLE RECURRING PROCESS"""
+"""COPY OF make_predictions.py WITH CHANGES TO MAKE IT A SUITABLE RECURRING PROCESS"""
 
-from server.tweet_generator import gen_result_tweet
-from server.get_odds import get_todays_odds
-from data import LeagueStats
-from server.prep_tweet import prepare
+from server.tweet_generator import gen_result_tweet, gen_prediction_tweet
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
+from server.get_odds import get_todays_odds
+from server.prep_tweet import prepare
+from data import LeagueStats
 import pandas as pd  # type: ignore
 import subprocess
+import threading
 import statsapi  # type: ignore
+import pytz  # type: ignore
 import time
-import sys
 import os
 
 MODELS = ["mlb3year", "mlb2023", "mets6year"]
 selected_model = MODELS[0]
+
 global_correct: int = 0
 global_wrong: int = 0
 global_biggest_upset: Optional[List] = None
 global_upset_diff: int = 0
 global_results: Optional[Tuple[str, str]] = None
+
 mlb = LeagueStats()
+
+lock = threading.Lock()
+
+cwd = os.path.dirname(os.path.abspath(__file__))
 
 
 def update_row(row: pd.Series) -> pd.Series:
@@ -68,7 +75,7 @@ def update_row(row: pd.Series) -> pd.Series:
             f"lost to the {actual_winner}."
         )
     updated_row = row.copy()
-    # update any row information that you want knowing the game is complete
+    # update any row information needed given that the game is now complete
     updated_row["prediction_accuracy"] = prediction_accuracy
     updated_row["home_score"] = game["home_score"]
     updated_row["away_score"] = game["away_score"]
@@ -98,7 +105,7 @@ def load_unchecked_predictions_from_excel(
         df = pd.read_excel(file_name)
         df_missing_accuracy = df[df["prediction_accuracy"].isnull()]
         df_missing_accuracy = df_missing_accuracy.apply(update_row, axis=1)
-
+        print("\n")
         if (global_correct + global_wrong) > 0:
             percentage = (
                 str(
@@ -137,10 +144,9 @@ def load_unchecked_predictions_from_excel(
                 )
             if res:
                 try:
-                    script_dir = os.path.dirname(os.path.abspath(__file__))
-                    file_name = os.path.join(script_dir, "server/tweet.py")
+                    tweet_script = os.path.join(cwd, "server/tweet.py")
                     process = subprocess.Popen(
-                        ["python3", file_name, res],
+                        ["python3", tweet_script, res],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
@@ -164,8 +170,29 @@ def load_unchecked_predictions_from_excel(
         return None
 
 
+def safely_prepare(row: pd.Series) -> None:
+    """
+    function to orchastrate mutual exclusion to the prepare function
+
+    Args:
+        row: pandas series with a single game's info
+    """
+    try:
+        lock.acquire()
+        prepare(row)
+    finally:
+        lock.release()
+
+
+def schedule_job(
+    scheduler: BackgroundScheduler, row: pd.Series, tweet_time: datetime
+) -> None:
+    """function to add safely_prepare(row) to the scheduler at tweet_time"""
+    scheduler.add_job(safely_prepare, args=[row], trigger="date", run_date=tweet_time)
+
+
 def generate_daily_predictions(
-    model: str, scheduler, date: datetime = datetime.now()
+    model: str, scheduler: BackgroundScheduler, date: datetime = datetime.now()
 ) -> List[Dict]:
     """
     function to generate predictions for one day of MLB games...
@@ -174,6 +201,7 @@ def generate_daily_predictions(
     Args:
         model: model to use
             -> must be defined in MODELS
+        scheduler: schedule to add the prediction tweet to
         date: datetime object representing day to predict on
 
     Returns:
@@ -182,28 +210,51 @@ def generate_daily_predictions(
     if date is not datetime.now():
         # NOT IMPLEMENTED: generating predictions for future days
         pass
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_name = os.path.join(script_dir, "data/predictions.xlsx")
+    data_file = os.path.join(cwd, "data/predictions.xlsx")
+    eastern = pytz.timezone("US/Eastern")
 
     try:
-        df = pd.read_excel(file_name)
-        existing_dates = pd.to_datetime(df["datetime"]).dt.date.unique()
-        if date.date() in existing_dates:
-            mask = (pd.to_datetime(df["datetime"]).dt.date == date.date()) & (
-                pd.to_datetime(df["prediction_generation_time"]).dt.date == date.date()
+        df = pd.read_excel(data_file)
+        existing_dates = (
+            pd.to_datetime(df["datetime"]).dt.tz_convert(eastern).dt.date.unique()
+        )
+        existing_dates_list = [str(date) for date in existing_dates]
+        check_date = str(date.date())
+        if check_date in existing_dates_list:
+            eastern_dt = pd.to_datetime(df["datetime"]).dt.tz_convert(eastern).dt.date
+            mask = (
+                (eastern_dt == date.date())
+                & (
+                    pd.to_datetime(df["prediction_generation_time"]).dt.date
+                    == date.date()
+                )
+                & (df["tweeted?"] is False)
             )
             filtered_df = df[mask]
             if len(filtered_df) > 0:
                 predictions = filtered_df.to_dict("records")
+                for _, row in filtered_df.iterrows():
+                    tweet_time = pd.to_datetime("tweet_time")
+                    schedule_job(scheduler, row, tweet_time)
+                    print(
+                        f"{datetime.now().strftime('%D - %T')}... \nAdded game "
+                        f"({row['away']} @ {row['home']}) to tweet schedule "
+                        f"for {tweet_time.strftime('%T')}\n"
+                    )
                 return predictions
             else:
-                new_mask = pd.to_datetime(df["datetime"]).dt.date == date.date()
+                eastern_dt = pd.to_datetime(df["datetime"]).dt.tz_convert(eastern)
+                new_mask = eastern_dt == date.date()
                 df = df[~new_mask]
     except FileNotFoundError:
         df = pd.DataFrame()
 
     all_games, odds_time = get_todays_odds()
     game_predictions: List[Dict] = []
+    print(
+        f"{datetime.now().strftime('%D - %T')}... "
+        f"\nMaking predictions using {selected_model} model\n"
+    )
     for game in all_games:
         try:
             ret = mlb.predict_next_game("mlb2023", game["home_team"])
@@ -233,11 +284,16 @@ def generate_daily_predictions(
         info["winning_pitcher"] = None
         info["losing_pitcher"] = None
         info["tweeted?"] = False
-        info["tweet"] = None
+        tweet = gen_prediction_tweet(
+            winner,
+            (info["home"] if info["away"] == winner else info["away"]),
+            info["time"],
+            info["venue"],
+        )
+        info["tweet"] = tweet
         tweet_time = pd.to_datetime(info["datetime"]) - timedelta(hours=1)
         info["time_to_tweet"] = tweet_time.replace(tzinfo=None)
-        # add to schedule
-        scheduler.add_job(prepare, args=[info], trigger="date", run_date=tweet_time)
+        schedule_job(scheduler, info, tweet_time)
         print(
             f"{datetime.now().strftime('%D - %T')}... \nAdded game "
             f"({info['away']} @ {info['home']}) to tweet schedule "
@@ -280,22 +336,19 @@ def generate_daily_predictions(
     ]
     df_new = df_new[column_order]
     df = pd.concat([df, df_new], ignore_index=True)
-    df.to_excel(file_name, index=False)
-
+    df.to_excel(data_file, index=False)
     return game_predictions
 
 
 def check_and_predict(selected_model):
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_name = os.path.join(script_dir, "data/predictions.xlsx")
+    data_file = os.path.join(cwd, "data/predictions.xlsx")
     try:
-        load_unchecked_predictions_from_excel(file_name)
+        load_unchecked_predictions_from_excel(data_file)
     except Exception as e:
-        print(f"Error checking past predictions in {file_name}. {e}")
-    daily_scheduler = BackgroundScheduler(timezone=timezone(timedelta(hours=-4)))
-    print(
-        f"{datetime.now().strftime('%D - %T')}... "
-        f"\nMaking predictions using {selected_model} model\n"
+        print(f"Error checking past predictions in {data_file}. {e}")
+    daily_scheduler = BackgroundScheduler(
+        job_defaults={"coalesce": False},
+        timezone=timezone(timedelta(hours=-4)),
     )
     generate_daily_predictions(selected_model, daily_scheduler)
     daily_scheduler.start()
@@ -305,16 +358,15 @@ def check_and_predict(selected_model):
         print(f"Next Execution Time: {job.next_run_time}")
         print(f"Trigger: {job.trigger}\n")
     try:
-        while True:
+        while daily_scheduler.get_jobs():
             time.sleep(1)
-            if not daily_scheduler.get_jobs():
-                print(
-                    f"{datetime.now().strftime('%D - %T')}... "
-                    f"\nAll jobs complete. Exiting\n"
-                )
-                break
+        print(
+            f"{datetime.now().strftime('%D - %T')}... "
+            f"\nAll daily prediction tweets complete. "
+            f"Exiting predict.py check_and_predict\n"
+        )
     finally:
-        daily_scheduler.shutdown()
+        daily_scheduler.shutdown(wait=True)
 
 
 if __name__ == "__main__":
