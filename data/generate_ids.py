@@ -122,8 +122,8 @@ data = {
     "elo_abbreviation": elo_abbreviation,
 }
 
-cwd = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(cwd, "ids.json")
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+file_path = os.path.join(parent_dir, "data/ids.json")
 
 with open(file_path, "w") as f:
     json.dump(data, f)
