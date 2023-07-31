@@ -2,8 +2,8 @@
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
 from apscheduler.triggers.cron import CronTrigger  # type: ignore
-from datetime import datetime, timedelta
 from predict import check_and_predict
+from datetime import datetime
 from predict import MODELS
 import apscheduler  # type: ignore
 import subprocess
@@ -11,12 +11,16 @@ import signal
 import time
 import sys
 
+# by default use largest model
 selected_model = "mlb3year"
 
 
-def run_predict_script(selected_model):
+def run_predict_script(selected_model: str) -> None:
     """
     function to run the prediction script (predict.py)
+
+    Args:
+        selected_model: string name of the model to use for predictions
     """
     print(f"{datetime.now().strftime('%D - %T')}... \nCalling predict.py\n")
     try:
@@ -39,9 +43,10 @@ def run_predict_script(selected_model):
         print(f"Error running predict.py: {e}")
 
 
-def switch_model():
+def switch_model() -> None:
     """
     function to switch the prediction model
+        -> updates global variable 'selected_model'
     """
     global selected_model
     print(f"Available prediction models: \n{', '.join(MODELS)}")
@@ -57,7 +62,7 @@ def switch_model():
         break
 
 
-def shutdown():
+def shutdown() -> None:
     """
     function to shutdown the scheduler and exit the script
     """
@@ -71,12 +76,12 @@ def shutdown():
     sys.exit(0)
 
 
-def interrupt_handler(signum, frame):
+def interrupt_handler(signum, frame) -> None:
     """
     function to handle keyboard interrupt (ctrl+c)
     """
     print(f"{datetime.now().strftime('%D - %T')}... \nKeyboard interrupt detected\n")
-    time.sleep(0.5)
+    time.sleep(0.25)
     while True:
         print("\nOptions:")
         print("0: Do nothing (return)")
@@ -84,22 +89,33 @@ def interrupt_handler(signum, frame):
         print("2. Shutdown")
         choice = input("Enter choice: ")
         if choice == "0":
+            print("\n")
             return
         if choice == "1":
+            print("\n")
             switch_model()
             return
         elif choice == "2":
+            print("\n")
             shutdown()
             return
         else:
-            print("Invalid choice. Please try again.")
+            print("\nInvalid choice. Please try again.")
+
+
+def print_jobs(scheduler) -> None:
+    """simple function to print all scheduled jobs"""
+    # Print details of scheduled jobs
+    print("Scheduled Jobs:")
+    for job in scheduler.get_jobs():
+        print(f"Job Name: {job.name}")
+        print(f"Next Execution Time: {job.next_run_time}")
+        print(f"Trigger: {job.trigger}\n")
 
 
 scheduler = BackgroundScheduler()
-# task_time = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
-task_time = datetime.now().replace(second=(datetime.now().second + 3))
+task_time = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
 scheduler.add_job(
-    #run_predict_script,
     check_and_predict,
     trigger=CronTrigger(
         hour=task_time.hour, minute=task_time.minute, second=task_time.second
@@ -110,12 +126,7 @@ scheduler.start()
 
 signal.signal(signal.SIGINT, interrupt_handler)
 
-# Print details of scheduled jobs
-print("Scheduled Jobs:")
-for job in scheduler.get_jobs():
-    print(f"Job Name: {job.name}")
-    print(f"Next Execution Time: {job.next_run_time}")
-    print(f"Trigger: {job.trigger}\n")
+print_jobs(scheduler)
 
 # run indefinitely
 try:
