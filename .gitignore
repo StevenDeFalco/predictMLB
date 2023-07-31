@@ -2,7 +2,11 @@
 *.xlsx
 *.json
 *.bak
+*.csv
 tweets.txt
+mlb3year_test.txt
+mlb3year.pkl
+mlb3year_test_scaler.pkl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
