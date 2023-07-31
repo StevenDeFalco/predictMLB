@@ -3,6 +3,9 @@ from server.tweet_generator import gen_prediction_tweet
 from datetime import datetime
 import pandas as pd  # type: ignore
 import subprocess
+import os
+
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 def prepare(game_info: pd.Series) -> None:
@@ -10,8 +13,8 @@ def prepare(game_info: pd.Series) -> None:
     function to update odds, construct tweet, and tweet prediction
         -> get latest odds
         -> update odds in pandas Series
-        -> update row in excel sheet to match pandas series w new odds
-        -> generate tweet using tweet.generator.py
+        -> update row in excel sheet to match pandas series with new odds
+        -> generate tweet using tweet_generator.py
         -> invoke subprocess tweet.py to tweet prediction
         -> return...
 
@@ -21,7 +24,7 @@ def prepare(game_info: pd.Series) -> None:
     Returns:
         None
     """
-    file_path = "../data/predictions.xlsx"
+    data_file = os.path.join(parent_dir, "data/predictions.xlsx")
     games, retrieval_time = get_todays_odds()
     home_odds, away_odds, home_odds_bookmaker, away_odds_bookmaker = (
         None,
@@ -41,8 +44,9 @@ def prepare(game_info: pd.Series) -> None:
             home_odds_bookmaker = game.get(f"{home}_bookmaker")
             away_odds_bookmaker = game.get(f"{away}_bookmaker")
             break
-    df = pd.read_excel(file_path)
-    row_index = df[df.eq(game_info).all(axis=1)].index[0]
+    df = pd.read_excel(data_file)
+    id = game_info.get("game_id")
+    row_index = df.loc[df["game_id"] == id].index[0]
     df.at[row_index, "home_odds"] = (
         home_odds if home_odds else df.at[row_index, "home_odds"]
     )
@@ -65,35 +69,36 @@ def prepare(game_info: pd.Series) -> None:
     print(
         f"\n{datetime.now().strftime('%D - %T')}... Odds updated: "
         f"{game_info['away']} ({'no update' if not away_odds else away_odds}) @ "
-        f"{game_info['home']} ({'no update' if not home_odds else home_odds})"
+        f"{game_info['home']} ({'no update' if not home_odds else home_odds})\n"
     )
-    df.to_excel(file_path, index=False)
-    info = df.loc[row_index].copy()
-    home, away = info["home"], info["away"]
-    winner = info["predicted_winner"]
+    home, away = df.at[row_index, "home"], df.at[row_index, "away"]
+    winner = df.at[row_index, "predicted_winner"]
     if winner == home:
-        winner_odds = info["home_odds"]
-        loser, loser_odds = away, info["away_odds"]
-        w_bookmaker = info["home_odds_bookmaker"]
-        l_bookmaker = info["away_odds_bookmaker"]
+        winner_odds = df.at[row_index, "home_odds"]
+        loser, loser_odds = away, df.at[row_index, "away_odds"]
+        w_bookmaker = df.at[row_index, "home_odds_bookmaker"]
+        l_bookmaker = df.at[row_index, "away_odds_bookmaker"]
     else:  # winner == away
-        winner_odds = info["away_odds"]
-        loser, loser_odds = home, info["home_odds"]
-        w_bookmaker = info["away_odds_bookmaker"]
-        l_bookmaker = info["home_odds_bookmaker"]
+        winner_odds = df.at[row_index, "away_odds"]
+        loser, loser_odds = home, df.at[row_index, "home_odds"]
+        w_bookmaker = df.at[row_index, "away_odds_bookmaker"]
+        l_bookmaker = df.at[row_index, "home_odds_bookmaker"]
     tweet = gen_prediction_tweet(
         winner,
         loser,
-        info["time"],
-        info["venue"],
+        df.at[row_index, "time"],
+        df.at[row_index, "venue"],
         winner_odds,
         loser_odds,
         w_bookmaker,
         l_bookmaker,
     )
+    df.at[row_index, "tweet"] = tweet
     try:
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        script_dir = os.path.join(cwd, "tweet.py")
         process = subprocess.Popen(
-            ["python3", "./tweet.py", tweet],
+            ["python3", script_dir, tweet],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -105,8 +110,12 @@ def prepare(game_info: pd.Series) -> None:
         return_code = process.poll()
         if return_code != 0:
             print(f"Error calling tweet.py: return code={return_code}")
+            df.at[row_index, "tweeted?"] = False
+        else:
+            df.at[row_index, "tweeted?"] = True
     except subprocess.CalledProcessError as e:
         print(
             f"\n{datetime.now().strftime('%D - %T')}... "
             f"Exception calling tweet.py to tweet prediction: {e}"
         )
+    df.to_excel(data_file, index=False)
