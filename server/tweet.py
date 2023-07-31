@@ -24,13 +24,14 @@ client = tweepy.Client(
 if len(sys.argv) > 1:
     tweet = sys.argv[1]
 
-    print(f"{datetime.now().strftime('%D - %T')}... \nTweeting: '{tweet}'\n")
+    print(f"\n{datetime.now().strftime('%D - %T')}... \nTweeting: '{tweet}'\n")
 
     with open("tweets.txt", "a") as f:
         f.write(tweet + "\n")
 
-    # tweet...
     try:
         client.create_tweet(text=tweet)
+        sys.exit(0)
     except Exception as e:
         print(f"Error tweeting: {e}")
+        sys.exit(1)
