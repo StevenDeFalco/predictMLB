@@ -34,8 +34,8 @@ def prepare(game_info: pd.Series) -> None:
     )
     for game in games:
         if (
-            game.get("home") == game_info.get("home")
-            and game.get("away") == game_info.get("away")
+            game.get("home_team") == game_info.get("home")
+            and game.get("away_team") == game_info.get("away")
             and game.get("time") == game_info.get("time")
         ):
             home, away = game_info["home"], game_info["away"]
@@ -66,10 +66,13 @@ def prepare(game_info: pd.Series) -> None:
     df.at[row_index, "odds_retrieval_time"] = (
         retrieval_time if home_odds else df.at[row_index, "odds_retrieval_time"]
     )
+    if home_odds and away_odds:
+        home_odds = ("+" + str(home_odds)) if (int(home_odds) > 100) else str(home_odds)
+        away_odds = ("+" + str(away_odds)) if (int(away_odds) > 100) else str(away_odds)
     print(
-        f"\n{datetime.now().strftime('%D - %T')}... Odds updated: "
-        f"{game_info['away']} ({'no update' if not away_odds else away_odds}) @ "
-        f"{game_info['home']} ({'no update' if not home_odds else home_odds})\n"
+        f"\n{datetime.now().strftime('%D - %T')}... Odds checked for updates: "
+        f"{game_info['away']} ({'no update' if not away_odds else str(away_odds)}) @ "
+        f"{game_info['home']} ({'no update' if not home_odds else str(home_odds)})\n"
     )
     home, away = df.at[row_index, "home"], df.at[row_index, "away"]
     winner = df.at[row_index, "predicted_winner"]
