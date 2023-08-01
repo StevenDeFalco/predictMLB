@@ -26,7 +26,7 @@ def gen_prediction_tweet(
     msg += f"will defeat the {pred_loser} "
     if losing_odds and losing_odds_bookmaker:
         msg += f"({str(losing_odds)} on {losing_odds_bookmaker}) "
-    msg += f"at {time} when the two teams match up at {venue}."
+    msg += f"today at {time} ET at {venue}."
     return msg
 
 
