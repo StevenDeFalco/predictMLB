@@ -183,11 +183,24 @@ def safely_prepare(row: pd.Series) -> None:
     finally:
         lock.release()
 
+def print_next_job(event) -> None:
+    """function to print details about next scheduled job"""
+    scheduler = event.scheduler
+    print(f"{datetime.now().strftime('%D - %T')}... Next Scheduled Job")
+    next_job = scheduler.get_jobs()[0] if scheduler.get_jobs()[0] else None
+    if next_job is not None:
+        print(f"\nJob Name: {next_job.name}")
+        run_time = next_job.next_run_time
+        et_time = run_time.astimezone(pytz.timezone('America/New_York'))
+        formatted_time = et_time.strftime('%I:%M %p')
+        print(f"Next Execution Time: {formatted_time} ET")
+        print(f"Trigger: {next_job.trigger}\n")
 
 def schedule_job(
     scheduler: BackgroundScheduler, row: pd.Series, tweet_time: datetime
 ) -> None:
     """function to add safely_prepare(row) to the scheduler at tweet_time"""
+    scheduler.add_listener(print_next_job, 'job_finished')
     scheduler.add_job(safely_prepare, args=[row], trigger="date", run_date=tweet_time)
 
 
@@ -350,13 +363,9 @@ def check_and_predict(selected_model):
         job_defaults={"coalesce": False},
         timezone=timezone(timedelta(hours=-4)),
     )
+    daily_scheduler.add_listener(print_next_job, 'scheduler_started')
     generate_daily_predictions(selected_model, daily_scheduler)
     daily_scheduler.start()
-    print(f"{datetime.now().strftime('%D - %T')}... Scheduled Jobs")
-    for job in daily_scheduler.get_jobs():
-        print(f"\nJob Name: {job.name}")
-        print(f"Next Execution Time: {job.next_run_time}")
-        print(f"Trigger: {job.trigger}\n")
     try:
         while daily_scheduler.get_jobs():
             time.sleep(1)
@@ -367,6 +376,7 @@ def check_and_predict(selected_model):
         )
     finally:
         daily_scheduler.shutdown(wait=True)
+        sys.exit(0)
 
 
 if __name__ == "__main__":
