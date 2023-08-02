@@ -28,7 +28,7 @@ if len(sys.argv) > 1:
     print(f"\n{datetime.now().strftime('%D - %T')}... \nTweeting: '{tweet}'\n")
 
     tweet_log = os.path.join(cwd, "tweets.txt")
-    with open("tweets.txt", "a") as f:
+    with open(tweet_log, "a") as f:
         f.write(tweet + "\n")
 
     try:
