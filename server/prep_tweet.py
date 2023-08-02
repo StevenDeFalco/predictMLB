@@ -66,9 +66,6 @@ def prepare(game_info: pd.Series) -> None:
     df.at[row_index, "odds_retrieval_time"] = (
         retrieval_time if home_odds else df.at[row_index, "odds_retrieval_time"]
     )
-    if home_odds and away_odds:
-        home_odds = ("+" + str(home_odds)) if (int(home_odds) > 100) else str(home_odds)
-        away_odds = ("+" + str(away_odds)) if (int(away_odds) > 100) else str(away_odds)
     print(
         f"\n{datetime.now().strftime('%D - %T')}... Odds checked for updates: "
         f"{game_info['away']} ({'no update' if not away_odds else str(away_odds)}) @ "
