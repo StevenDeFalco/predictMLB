@@ -27,7 +27,7 @@ def run_predict_script(selected_model: str) -> None:
     load_dotenv()
     ret = os.getenv("SELECTED_MODEL")
     selected_model = ret if ret is not None else selected_model
-    print(f"{datetime.now().strftime('%D - %T')}... \nCalling predict.py\n")
+    print(f"{datetime.now().strftime('%D - %I:%M:%S %p')}... \nCalling predict.py\n")
     try:
         process = subprocess.Popen(
             ["python3", "predict.py", selected_model],
@@ -62,7 +62,7 @@ def switch_model() -> None:
             continue
         selected_model = new_model
         print(
-            f"{datetime.now().strftime('%D - %T')}... \nModel set to {selected_model}\n"
+                f"{datetime.now().strftime('%D - %I:%M:%S %p')}... \nModel set to {selected_model}\n"
         )
         break
 
@@ -71,7 +71,7 @@ def shutdown() -> None:
     """
     function to shutdown the scheduler and exit the script
     """
-    print(f"{datetime.now().strftime('%D - %T')}... \nShutting down scheduler\n")
+    print(f"{datetime.now().strftime('%D - %I:%M:%S %p')}... \nShutting down scheduler\n")
     try:
         scheduler.shutdown(wait=False)
     except apscheduler.schedulers.SchedulerNotRunningError:
@@ -86,7 +86,7 @@ def interrupt_handler(signum, frame) -> None:
     function to handle keyboard interrupt (ctrl+c)
         -> not necessary when running as background process
     """
-    print(f"{datetime.now().strftime('%D - %T')}... \nKeyboard interrupt detected\n")
+    print(f"{datetime.now().strftime('%D - %I:%M:%S %p')}... \nKeyboard interrupt detected\n")
     time.sleep(0.25)
     while True:
         print("\nOptions:")
@@ -120,7 +120,7 @@ def print_jobs(scheduler) -> None:
 
 
 scheduler = BackgroundScheduler()
-task_time = datetime.now().replace(hour=7, minute=0, second=0, microsecond=0)
+task_time = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
 scheduler.add_job(
     check_and_predict,
     trigger=CronTrigger(
