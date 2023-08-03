@@ -2,6 +2,7 @@
 
 from server.tweet_generator import gen_result_tweet, gen_prediction_tweet
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
+from apscheduler.events import EVENT_SCHEDULER_STARTED, EVENT_JOB_EXECUTED
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from server.get_odds import get_todays_odds
@@ -29,6 +30,7 @@ mlb = LeagueStats()
 lock = threading.Lock()
 
 cwd = os.path.dirname(os.path.abspath(__file__))
+eastern = pytz.timezone('US/Eastern')
 
 
 def update_row(row: pd.Series) -> pd.Series:
@@ -160,7 +162,7 @@ def load_unchecked_predictions_from_excel(
                         print(f"Error calling tweet.py: return code={return_code}")
                 except subprocess.CalledProcessError as e:
                     print(
-                        f"{datetime.now().strftime('%D - %T')}... "
+                        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}... "
                         f"\nError tweeting results{e}\n"
                     )
         df.update(df_missing_accuracy)
@@ -183,24 +185,24 @@ def safely_prepare(row: pd.Series) -> None:
     finally:
         lock.release()
 
-def print_next_job(event) -> None:
+def print_next_job(scheduler) -> None:
     """function to print details about next scheduled job"""
-    scheduler = event.scheduler
-    print(f"{datetime.now().strftime('%D - %T')}... Next Scheduled Job")
-    next_job = scheduler.get_jobs()[0] if scheduler.get_jobs()[0] else None
-    if next_job is not None:
-        print(f"\nJob Name: {next_job.name}")
-        run_time = next_job.next_run_time
-        et_time = run_time.astimezone(pytz.timezone('America/New_York'))
-        formatted_time = et_time.strftime('%I:%M %p')
-        print(f"Next Execution Time: {formatted_time} ET")
-        print(f"Trigger: {next_job.trigger}\n")
+    def event_handler(event) -> None:
+        print(f"{datetime.now().strftime('%D - %I:%M %p')}... Next Scheduled Job")
+        next_job = scheduler.get_jobs()[0] if scheduler.get_jobs()[0] else None
+        if next_job is not None:
+            print(f"\nJob Name: {next_job.name}")
+            run_time = next_job.next_run_time
+            et_time = run_time.astimezone(pytz.timezone('America/New_York'))
+            formatted_time = et_time.strftime('%I:%M %p')
+            print(f"Next Execution Time: {formatted_time} ET")
+            print(f"Trigger: {next_job.trigger}\n")
 
 def schedule_job(
     scheduler: BackgroundScheduler, row: pd.Series, tweet_time: datetime
 ) -> None:
     """function to add safely_prepare(row) to the scheduler at tweet_time"""
-    scheduler.add_listener(print_next_job, 'job_finished')
+    scheduler.add_listener(print_next_job(scheduler), EVENT_JOB_EXECUTED)
     scheduler.add_job(safely_prepare, args=[row], trigger="date", run_date=tweet_time)
 
 
@@ -250,9 +252,9 @@ def generate_daily_predictions(
                     tweet_time = pd.to_datetime("tweet_time")
                     schedule_job(scheduler, row, tweet_time)
                     print(
-                        f"{datetime.now().strftime('%D - %T')}... \nAdded game "
+                        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}... \nAdded game "
                         f"({row['away']} @ {row['home']}) to tweet schedule "
-                        f"for {tweet_time.strftime('%T')}\n"
+                        f"for {tweet_time.strftime('%I:%M %p')}\n"
                     )
                 return predictions
             else:
@@ -265,7 +267,7 @@ def generate_daily_predictions(
     all_games, odds_time = get_todays_odds()
     game_predictions: List[Dict] = []
     print(
-        f"{datetime.now().strftime('%D - %T')}... "
+        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}..."
         f"\nMaking predictions using {selected_model} model\n"
     )
     for game in all_games:
@@ -308,9 +310,9 @@ def generate_daily_predictions(
         info["time_to_tweet"] = tweet_time.replace(tzinfo=None)
         schedule_job(scheduler, info, tweet_time)
         print(
-            f"{datetime.now().strftime('%D - %T')}... \nAdded game "
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}... \nAdded game "
             f"({info['away']} @ {info['home']}) to tweet schedule "
-            f"for {tweet_time.strftime('%T')}\n"
+            f"for {tweet_time.strftime('%I:%M %p')}\n"
         )
         game_predictions.append(info)
 
@@ -363,14 +365,14 @@ def check_and_predict(selected_model):
         job_defaults={"coalesce": False},
         timezone=timezone(timedelta(hours=-4)),
     )
-    daily_scheduler.add_listener(print_next_job, 'scheduler_started')
+    daily_scheduler.add_listener(print_next_job(daily_scheduler), EVENT_SCHEDULER_STARTED)
     generate_daily_predictions(selected_model, daily_scheduler)
     daily_scheduler.start()
     try:
         while daily_scheduler.get_jobs():
             time.sleep(1)
         print(
-            f"{datetime.now().strftime('%D - %T')}... "
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}... "
             f"\nAll daily prediction tweets complete. "
             f"Exiting predict.py check_and_predict\n"
         )
