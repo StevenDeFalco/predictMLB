@@ -61,4 +61,42 @@ This script is the method through which large amounts of data retrieval (seasons
 
 ## Machine Learning and The Models
 
-*explanation to come...*
+After establishing the infrastructure to intake large amounts of data, the next step was to do so and prepare it for training the machine learning (ML) model. I collected a few different ranges of data and used them to, in turn train different models. 
+
+### mets6year 
+
+The first model I planned to train was a model which solely was trained using New York Mets games from 2017 until the present (July 2023); I would then use this to predict only Mets games with the hope that the model might be capable of learning some features that have some discernable influence on the outcome of Mets games. 
+
+### mlb2023 
+
+The next model used all mlb games that occurred in the 2023 season up until the All-Star break (~ 8 July). This model, I was hoping would do a good job predicting this season's games because of how recent the data was. There were many rule changes at the start of the 2023 season and if that would in any way influence my predictions then this model would take that into account. 
+
+### mlb3year 
+
+The final model (and the one that I use) takes data from all games across the past 3 seasons (2021, 2022, 2023). This model has the most training samples by far,  and thus I expect it to be the most robust model. I use this model in all the predictions that I publish as of writing this (03 August 2023). 
+
+### Preparing the data for training
+
+This explanation will closely follow that which is written in [mlb-predict.ipynb](https://github.com/StevenDeFalco/mlb-predict/blob/main/mlb-predict.ipynb). For each model I first load the data all back into memory in a single pandas DataFrame. Then I drop the non-training features which include game-id (for API use only), date, home-team, and away-team. I then separate the label (did-home-team-win) into its own array. At this point, I arrange the order of the features in my samples; there are two primary orders, that I experimented with.
+
+#### order1 (adjacent comparison)
+
+Order1 has the most important features first with each home statistic immediately followed by the away team's counter part. This allows for many meaningful comparisons between adjacent features. For example, the first features, in order, are home win percentage, away win percentage, home starting pitcher season era, away starting pitcher season era, etc. This pattern continues in an order that I believe leads to less and less important statistics. Ideally, the earliest features are weighed most heavily by the model and it is able to extract meaning the direct comparison of adjacent (home vs. away) statitics. 
+
+#### order2 (team separation)
+
+Order2 employs the same ordering of features from most important/influential to least import; however, all of the home team's statistics come first and are followed by all of the away-team's statistics. This, in theory, would skew the data higher on one side of the middle value of the array, and ideally the reasonable prediction for our model would be the side of the array that the data is skewed towards: home or away.
+
+I end up using order1 for my models (after testing both), but there truly wasn't a large discernable difference between the two when examining on the testing set. 
+
+The next step in preparing the data is to drop samples that have more than 10 missing values. Keep in mind the data isn't always perfect. Sometimes the ELO sheet will be missing some values for a game or the API will fail to retrieve some data etc, so I account for this by dropping samples that are missing too many features. Then I perform min-max normalization on features that do not already fall within the range of [0,1]; these scalers are saved to the disk for use when preparing a sample for prediction. Finally, we randomize the indices of the data and split into training and testing groups (85/15 split). 
+
+### Training with lightgbm
+
+In an effort to maximize my accuracy as fast as possible, I opted to finetune an existing framework. LightGBM is a gradient boosting framework that is known to have very high-performance and be very computationally efficient. For my training, I imported the framework, converted my dataset to the required format, specified parameters including the objective of binary classification, and the let the model train. 
+
+My mlb3year model uses 5078 training samples (5078 x 36 features) with a testing set of 897 samples. I have a test set accuracy of ~ 64% on this model. This number was achieved after a bit of hyperparameter tuning, but I found that even across my models trained with less data, 60% accuracy was relatively easy to achieve and I could only get up to about 5% more accuracy. These 5% differences are essentially negligible, however, with such small testing sets (<1000 samples). 
+
+## Making predictions 
+
+*information to come regarding making ongoing predictions/twitter interfacing...*
