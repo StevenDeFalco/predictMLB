@@ -2,7 +2,7 @@
 
 from server.tweet_generator import gen_result_tweet, gen_prediction_tweet
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
-from apscheduler.events import EVENT_SCHEDULER_STARTED, EVENT_JOB_EXECUTED
+from apscheduler.events import EVENT_SCHEDULER_STARTED, EVENT_JOB_EXECUTED, EVENT_JOB_MISSED
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from server.get_odds import get_todays_odds
@@ -185,24 +185,24 @@ def safely_prepare(row: pd.Series) -> None:
     finally:
         lock.release()
 
-def print_next_job(scheduler) -> None:
+def print_next_job(event) -> None:
     """function to print details about next scheduled job"""
-    def event_handler(event) -> None:
-        print(f"{datetime.now(eastern).strftime('%D - %I:%M %p')}... Next Scheduled Job")
-        next_job = scheduler.get_jobs()[0] if scheduler.get_jobs()[0] else None
-        if next_job is not None:
-            print(f"\nJob Name: {next_job.name}")
-            run_time = next_job.next_run_time
-            et_time = run_time.astimezone(pytz.timezone('America/New_York'))
-            formatted_time = et_time.strftime('%I:%M %p')
-            print(f"Next Execution Time: {formatted_time} ET")
-            print(f"Trigger: {next_job.trigger}\n")
+    print(f"{datetime.now(eastern).strftime('%D - %I:%M %p')}... Next Scheduled Job")
+    next_job = daily_scheduler.get_jobs()[0] if daily_scheduler.get_jobs()[0] else None
+    if next_job is not None:
+        print(f"\nJob Name: {next_job.name}")
+        run_time = next_job.next_run_time
+        et_time = run_time.astimezone(eastern)
+        formatted_time = et_time.strftime('%I:%M %p')
+        print(f"Next Execution Time: {formatted_time} ET")
+        print(f"Trigger: {next_job.trigger}\n")
+    return
 
 def schedule_job(
     scheduler: BackgroundScheduler, row: pd.Series, tweet_time: datetime
 ) -> None:
     """function to add safely_prepare(row) to the scheduler at tweet_time"""
-    scheduler.add_listener(print_next_job(scheduler), EVENT_JOB_EXECUTED)
+    scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
     scheduler.add_job(safely_prepare, args=[row], trigger="date", run_date=tweet_time)
 
 
@@ -353,6 +353,10 @@ def generate_daily_predictions(
     df.to_excel(data_file, index=False)
     return game_predictions
 
+daily_scheduler = BackgroundScheduler(
+    job_defaults={"coalesce": False},
+    timezone=timezone(timedelta(hours=-4)),
+)
 
 def check_and_predict(selected_model):
     data_file = os.path.join(cwd, "data/predictions.xlsx")
@@ -360,11 +364,8 @@ def check_and_predict(selected_model):
         load_unchecked_predictions_from_excel(data_file)
     except Exception as e:
         print(f"Error checking past predictions in {data_file}. {e}")
-    daily_scheduler = BackgroundScheduler(
-        job_defaults={"coalesce": False},
-        timezone=timezone(timedelta(hours=-4)),
-    )
-    daily_scheduler.add_listener(print_next_job(daily_scheduler), EVENT_SCHEDULER_STARTED)
+    daily_scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
+    daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
     generate_daily_predictions(selected_model, daily_scheduler)
     daily_scheduler.start()
     try:
