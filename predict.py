@@ -105,8 +105,8 @@ def load_unchecked_predictions_from_excel(
         df = pd.read_excel(file_name)
         df_missing_accuracy = df[df["prediction_accuracy"].isnull()]
         df_missing_accuracy = df_missing_accuracy.apply(update_row, axis=1)
-        print("\n")
         if (global_correct + global_wrong) > 0:
+            print("\n")
             percentage = (
                 str(
                     int(
@@ -274,8 +274,8 @@ def generate_daily_predictions(
             if ret is None or ret[0] is None:
                 continue
             winner, prediction, info = ret[0], ret[1], ret[2]
-        except Exception as _:
-            continue
+        except Exception as e:
+            print(f"Error predicting next game: \n{e}\n") 
         if not winner:
             continue
         home, away = info["home"], info["away"]
