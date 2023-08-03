@@ -3,6 +3,8 @@
 *.json
 *.bak
 *.csv
+*.out
+*.log
 tweets.txt
 mlb3year_test.txt
 mlb3year.pkl
