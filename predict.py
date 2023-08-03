@@ -2,7 +2,11 @@
 
 from server.tweet_generator import gen_result_tweet, gen_prediction_tweet
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
-from apscheduler.events import EVENT_SCHEDULER_STARTED, EVENT_JOB_EXECUTED, EVENT_JOB_MISSED
+from apscheduler.events import (
+    EVENT_SCHEDULER_STARTED,
+    EVENT_JOB_EXECUTED,
+    EVENT_JOB_MISSED,
+)
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from server.get_odds import get_todays_odds
@@ -30,7 +34,7 @@ mlb = LeagueStats()
 lock = threading.Lock()
 
 cwd = os.path.dirname(os.path.abspath(__file__))
-eastern = pytz.timezone('US/Eastern')
+eastern = pytz.timezone("US/Eastern")
 
 
 def update_row(row: pd.Series) -> pd.Series:
@@ -185,6 +189,7 @@ def safely_prepare(row: pd.Series) -> None:
     finally:
         lock.release()
 
+
 def print_next_job(event) -> None:
     """function to print details about next scheduled job"""
     print(f"{datetime.now(eastern).strftime('%D - %I:%M %p')}... Next Scheduled Job")
@@ -193,10 +198,11 @@ def print_next_job(event) -> None:
         print(f"\nJob Name: {next_job.name}")
         run_time = next_job.next_run_time
         et_time = run_time.astimezone(eastern)
-        formatted_time = et_time.strftime('%I:%M %p')
+        formatted_time = et_time.strftime("%I:%M %p")
         print(f"Next Execution Time: {formatted_time} ET")
         print(f"Trigger: {next_job.trigger}\n")
     return
+
 
 def schedule_job(
     scheduler: BackgroundScheduler, row: pd.Series, tweet_time: datetime
@@ -226,40 +232,37 @@ def generate_daily_predictions(
         # NOT IMPLEMENTED: generating predictions for future days
         pass
     data_file = os.path.join(cwd, "data/predictions.xlsx")
+    scheduled_ids = []
 
     try:
         df = pd.read_excel(data_file)
         existing_dates = (
-            pd.to_datetime(df["datetime"]).dt.tz_convert(eastern).dt.date.unique()
+            pd.to_datetime(df["time_to_tweet"]).dt.tz_convert(eastern).dt.date.unique()
         )
         existing_dates_list = [str(date) for date in existing_dates]
         check_date = str(date.date())
         if check_date in existing_dates_list:
-            eastern_dt = pd.to_datetime(df["datetime"]).dt.tz_convert(eastern).dt.date
-            mask = (
-                (eastern_dt == date.date())
-                & (
-                    pd.to_datetime(df["prediction_generation_time"]).dt.date
-                    == date.date()
-                )
-                & (df["tweeted?"] is False)
+            print(
+                f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
+                f"\nFound some tweets in spreadsheet that need to be scheduled\n"
             )
-            filtered_df = df[mask]
-            if len(filtered_df) > 0:
-                predictions = filtered_df.to_dict("records")
-                for _, row in filtered_df.iterrows():
-                    tweet_time = pd.to_datetime("tweet_time")
+            tt = pd.to_datetime(df["time_to_tweet"]).dt.tz_convert(eastern).dt.date
+            mask = (tt == date.date()) & (df["tweeted?"] == False)
+            to_tweet_today = df[mask]
+            if not to_tweet_today.empty:
+                print(
+                    f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
+                    f"\nFound {str(len(to_tweet_today))} tweets in sheet that need to be scheduled\n"
+                )
+                for _, row in to_tweet_today.iterrows():
+                    scheduled_ids.append(row["game_id"])
+                    tweet_time = pd.to_datetime(row["tweet_time"])
                     schedule_job(scheduler, row, tweet_time)
                     print(
                         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
                         f"({row['away']} @ {row['home']}) to tweet schedule "
                         f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
                     )
-                return predictions
-            else:
-                eastern_dt = pd.to_datetime(df["datetime"]).dt.tz_convert(eastern)
-                new_mask = eastern_dt == date.date()
-                df = df[~new_mask]
     except FileNotFoundError:
         df = pd.DataFrame()
 
@@ -275,8 +278,11 @@ def generate_daily_predictions(
             if ret is None or ret[0] is None:
                 continue
             winner, prediction, info = ret[0], ret[1], ret[2]
+            if info["game_id"] in scheduled_ids:
+                continue
         except Exception as e:
-            print(f"Error predicting next game: \n{e}\n") 
+            print(f"Error predicting next game: \n{e}\n")
+            continue
         if not winner:
             continue
         home, away = info["home"], info["away"]
@@ -313,6 +319,7 @@ def generate_daily_predictions(
             f"({info['away']} @ {info['home']}) to tweet schedule "
             f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
         )
+        scheduled_ids.append(info['game_id'])
         game_predictions.append(info)
 
     df_new = pd.DataFrame(game_predictions)
@@ -353,10 +360,12 @@ def generate_daily_predictions(
     df.to_excel(data_file, index=False)
     return game_predictions
 
+
 daily_scheduler = BackgroundScheduler(
     job_defaults={"coalesce": False},
     timezone=timezone(timedelta(hours=-4)),
 )
+
 
 def check_and_predict(selected_model):
     data_file = os.path.join(cwd, "data/predictions.xlsx")
