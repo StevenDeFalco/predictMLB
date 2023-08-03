@@ -608,7 +608,7 @@ class LeagueStats:
         ]
         df = df[order1]
         scalers = os.path.join(cwd, 'models/scalers')
-        path_to_scaler = os.path.join(scalers, (model_name + '.pkl'))
+        path_to_scaler = os.path.join(scalers, (model_name + '_scaler.pkl'))
         with open(path_to_scaler, "rb") as file:
             scaler = pickle.load(file)
         columns_to_scale = [
