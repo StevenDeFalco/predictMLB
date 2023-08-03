@@ -162,7 +162,7 @@ def load_unchecked_predictions_from_excel(
                         print(f"Error calling tweet.py: return code={return_code}")
                 except subprocess.CalledProcessError as e:
                     print(
-                        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}... "
+                        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
                         f"\nError tweeting results{e}\n"
                     )
         df.update(df_missing_accuracy)
@@ -226,7 +226,6 @@ def generate_daily_predictions(
         # NOT IMPLEMENTED: generating predictions for future days
         pass
     data_file = os.path.join(cwd, "data/predictions.xlsx")
-    eastern = pytz.timezone("US/Eastern")
 
     try:
         df = pd.read_excel(data_file)
@@ -252,7 +251,7 @@ def generate_daily_predictions(
                     tweet_time = pd.to_datetime("tweet_time")
                     schedule_job(scheduler, row, tweet_time)
                     print(
-                        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}... \nAdded game "
+                        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
                         f"({row['away']} @ {row['home']}) to tweet schedule "
                         f"for {tweet_time.strftime('%I:%M %p')}\n"
                     )
@@ -267,7 +266,7 @@ def generate_daily_predictions(
     all_games, odds_time = get_todays_odds()
     game_predictions: List[Dict] = []
     print(
-        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}..."
+        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}..."
         f"\nMaking predictions using {selected_model} model\n"
     )
     for game in all_games:
@@ -310,7 +309,7 @@ def generate_daily_predictions(
         info["time_to_tweet"] = tweet_time.replace(tzinfo=None)
         schedule_job(scheduler, info, tweet_time)
         print(
-            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}... \nAdded game "
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
             f"({info['away']} @ {info['home']}) to tweet schedule "
             f"for {tweet_time.strftime('%I:%M %p')}\n"
         )
@@ -372,7 +371,7 @@ def check_and_predict(selected_model):
         while daily_scheduler.get_jobs():
             time.sleep(1)
         print(
-            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p)}... "
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
             f"\nAll daily prediction tweets complete. "
             f"Exiting predict.py check_and_predict\n"
         )
