@@ -1,4 +1,4 @@
-'''#!/home/ubuntu/.miniconda3/bin/python3'''
+"""#!/home/ubuntu/.miniconda3/bin/python3"""
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
 from apscheduler.triggers.cron import CronTrigger  # type: ignore
@@ -11,6 +11,7 @@ import subprocess
 import signal
 import time
 import sys
+import os
 
 # by default use largest model
 selected_model = "mlb3year"
@@ -24,7 +25,8 @@ def run_predict_script(selected_model: str) -> None:
         selected_model: string name of the model to use for predictions
     """
     load_dotenv()
-    selected_model = os.getenv("SELECTED_MODEL")
+    ret = os.getenv("SELECTED_MODEL")
+    selected_model = ret if ret is not None else selected_model
     print(f"{datetime.now().strftime('%D - %T')}... \nCalling predict.py\n")
     try:
         process = subprocess.Popen(
@@ -118,7 +120,7 @@ def print_jobs(scheduler) -> None:
 
 
 scheduler = BackgroundScheduler()
-task_time = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
+task_time = datetime.now().replace(hour=7, minute=0, second=0, microsecond=0)
 scheduler.add_job(
     check_and_predict,
     trigger=CronTrigger(
