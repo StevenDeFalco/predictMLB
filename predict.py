@@ -192,10 +192,10 @@ def safely_prepare(row: pd.Series) -> None:
 
 def print_next_job(event) -> None:
     """function to print details about next scheduled job"""
-    print(f"{datetime.now(eastern).strftime('%D - %I:%M %p')}... Next Scheduled Job")
+    print(f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... Next Scheduled Job")
     next_job = daily_scheduler.get_jobs()[0] if daily_scheduler.get_jobs()[0] else None
     if next_job is not None:
-        print(f"\nJob Name: {next_job.name}")
+        print(f"Job Name: {next_job.name}")
         run_time = next_job.next_run_time
         et_time = run_time.astimezone(eastern)
         formatted_time = et_time.strftime("%I:%M %p")
@@ -208,7 +208,6 @@ def schedule_job(
     scheduler: BackgroundScheduler, row: pd.Series, tweet_time: datetime
 ) -> None:
     """function to add safely_prepare(row) to the scheduler at tweet_time"""
-    scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
     scheduler.add_job(safely_prepare, args=[row], trigger="date", run_date=tweet_time)
 
 
@@ -236,8 +235,9 @@ def generate_daily_predictions(
 
     try:
         df = pd.read_excel(data_file)
+        tweet_times = pd.to_datetime(df["time_to_tweet"]).dt.tz_localize(pytz.utc)
         existing_dates = (
-            pd.to_datetime(df["time_to_tweet"]).dt.tz_convert(eastern).dt.date.unique()
+            tweet_times.dt.tz_convert(eastern).dt.date.unique()
         )
         existing_dates_list = [str(date) for date in existing_dates]
         check_date = str(date.date())
@@ -246,7 +246,8 @@ def generate_daily_predictions(
                 f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
                 f"\nFound some tweets in spreadsheet that need to be scheduled\n"
             )
-            tt = pd.to_datetime(df["time_to_tweet"]).dt.tz_convert(eastern).dt.date
+            tt = pd.to_datetime(df["time_to_tweet"]).dt.tz_localize(pytz.utc)
+            tt = tt.dt.tz_convert(eastern).dt.date
             mask = (tt == date.date()) & (df["tweeted?"] == False)
             to_tweet_today = df[mask]
             if not to_tweet_today.empty:
@@ -260,7 +261,7 @@ def generate_daily_predictions(
                     schedule_job(scheduler, row, tweet_time)
                     print(
                         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
-                        f"({row['away']} @ {row['home']}) to tweet schedule "
+                        f"({row['away']} @ {row['home']}) to tweet schedule (from sheet)"
                         f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
                     )
     except FileNotFoundError:
@@ -273,6 +274,8 @@ def generate_daily_predictions(
         f"\nMaking predictions using {selected_model} model\n"
     )
     for game in all_games:
+        if game['date'] != 'Today':
+            continue
         try:
             ret = mlb.predict_next_game(selected_model, game["home_team"])
             if ret is None or ret[0] is None:
@@ -366,6 +369,11 @@ daily_scheduler = BackgroundScheduler(
     timezone=timezone(timedelta(hours=-4)),
 )
 
+daily_scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
+daily_scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
+daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
+generate_daily_predictions(selected_model, daily_scheduler)
+
 
 def check_and_predict(selected_model):
     data_file = os.path.join(cwd, "data/predictions.xlsx")
@@ -373,9 +381,6 @@ def check_and_predict(selected_model):
         load_unchecked_predictions_from_excel(data_file)
     except Exception as e:
         print(f"Error checking past predictions in {data_file}. {e}")
-    daily_scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
-    daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
-    generate_daily_predictions(selected_model, daily_scheduler)
     daily_scheduler.start()
     try:
         while daily_scheduler.get_jobs():
