@@ -25,7 +25,7 @@ client = tweepy.Client(
 if len(sys.argv) > 1:
     tweet = sys.argv[1]
 
-    print(f"\n{datetime.now().strftime('%D - %T')}... \nTweeting: '{tweet}'\n")
+    print(f"\n{datetime.now().strftime('%D - %I:%M:%S %p')}... \nTweeting: '{tweet}'\n")
 
     tweet_log = os.path.join(cwd, "tweets.txt")
     with open(tweet_log, "a") as f:
