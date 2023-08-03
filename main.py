@@ -1,8 +1,9 @@
-#!/usr/bin/python3
+'''#!/home/ubuntu/.miniconda3/bin/python3'''
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
 from apscheduler.triggers.cron import CronTrigger  # type: ignore
 from predict import check_and_predict
+from dotenv import load_dotenv
 from datetime import datetime
 from predict import MODELS
 import apscheduler  # type: ignore
@@ -22,6 +23,9 @@ def run_predict_script(selected_model: str) -> None:
     Args:
         selected_model: string name of the model to use for predictions
     """
+    global selected_model
+    load_dotenv()
+    selected_model = os.getenv("SELECTED_MODEL")
     print(f"{datetime.now().strftime('%D - %T')}... \nCalling predict.py\n")
     try:
         process = subprocess.Popen(
@@ -79,6 +83,7 @@ def shutdown() -> None:
 def interrupt_handler(signum, frame) -> None:
     """
     function to handle keyboard interrupt (ctrl+c)
+        -> not necessary when running as background process
     """
     print(f"{datetime.now().strftime('%D - %T')}... \nKeyboard interrupt detected\n")
     time.sleep(0.25)
