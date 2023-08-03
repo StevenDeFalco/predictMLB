@@ -153,7 +153,7 @@ def process_data(data):
         best_odds = get_best_odds(game)
         game_info["favorite"] = get_favorite(game)
         for team, odds_info in best_odds.items():
-            game_info[f"{team}_odds"] = str(odds_info["odds"])
+            game_info[f"{team}_odds"] = int(odds_info["odds"])
             game_info[f"{team}_bookmaker"] = odds_info["bookmaker"]
         games.append(game_info)
     return games
