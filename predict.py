@@ -188,7 +188,7 @@ def safely_prepare(row: pd.Series) -> None:
 def print_next_job(scheduler) -> None:
     """function to print details about next scheduled job"""
     def event_handler(event) -> None:
-        print(f"{datetime.now().strftime('%D - %I:%M %p')}... Next Scheduled Job")
+        print(f"{datetime.now(eastern).strftime('%D - %I:%M %p')}... Next Scheduled Job")
         next_job = scheduler.get_jobs()[0] if scheduler.get_jobs()[0] else None
         if next_job is not None:
             print(f"\nJob Name: {next_job.name}")
@@ -253,7 +253,7 @@ def generate_daily_predictions(
                     print(
                         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
                         f"({row['away']} @ {row['home']}) to tweet schedule "
-                        f"for {tweet_time.strftime('%I:%M %p')}\n"
+                        f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
                     )
                 return predictions
             else:
@@ -311,7 +311,7 @@ def generate_daily_predictions(
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
             f"({info['away']} @ {info['home']}) to tweet schedule "
-            f"for {tweet_time.strftime('%I:%M %p')}\n"
+            f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
         )
         game_predictions.append(info)
 
