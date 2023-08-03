@@ -23,7 +23,6 @@ def run_predict_script(selected_model: str) -> None:
     Args:
         selected_model: string name of the model to use for predictions
     """
-    global selected_model
     load_dotenv()
     selected_model = os.getenv("SELECTED_MODEL")
     print(f"{datetime.now().strftime('%D - %T')}... \nCalling predict.py\n")
