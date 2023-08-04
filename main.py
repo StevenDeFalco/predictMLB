@@ -4,7 +4,6 @@ from apscheduler.triggers.cron import CronTrigger  # type: ignore
 from predict import check_and_predict
 from dotenv import load_dotenv  # type: ignore
 from datetime import datetime
-import subprocess
 import time
 import pytz  # type: ignore
 import os
