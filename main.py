@@ -2,6 +2,7 @@
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
 from apscheduler.triggers.cron import CronTrigger  # type: ignore
+from apscheduler.events import EVENT_SCHEDULER_STARTED, EVENT_JOB_EXECUTED
 from predict import check_and_predict
 from dotenv import load_dotenv
 from datetime import datetime
@@ -109,17 +110,25 @@ def interrupt_handler(signum, frame) -> None:
             print("\nInvalid choice. Please try again.")
 
 
-def print_jobs(scheduler) -> None:
-    """simple function to print all scheduled jobs"""
-    # Print details of scheduled jobs
-    print("Scheduled Jobs:")
-    for job in scheduler.get_jobs():
-        print(f"Job Name: {job.name}")
-        print(f"Next Execution Time: {job.next_run_time}")
-        print(f"Trigger: {job.trigger}\n")
+def print_next_job(event) -> None:
+    """function to print details about next scheduled job"""
+    time.sleep(1)
+    next_job = scheduler.get_jobs()[0] if scheduler.get_jobs()[0] else None
+    if next_job is not None:
+        print(f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... Next Scheduled Job")
+        print(f"Job Name: {next_job.name}")
+        run_time = next_job.next_run_time
+        et_time = run_time.astimezone(eastern)
+        formatted_time = et_time.strftime("%I:%M %p")
+        print(f"Next Execution Time: {formatted_time} ET")
+        time.sleep(1)
+    return
 
 
 scheduler = BackgroundScheduler()
+scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
+scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
+
 task_time = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
 scheduler.add_job(
     check_and_predict,
@@ -128,11 +137,11 @@ scheduler.add_job(
     ),
     args=[selected_model],
 )
+
+time.sleep(1)
 scheduler.start()
 
 signal.signal(signal.SIGINT, interrupt_handler)
-
-print_jobs(scheduler)
 
 # run indefinitely
 try:
