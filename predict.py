@@ -394,8 +394,6 @@ daily_scheduler = BackgroundScheduler(
 daily_scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
 daily_scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
 daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
-generate_daily_predictions(selected_model, daily_scheduler)
-
 
 def check_and_predict(selected_model):
     data_file = os.path.join(cwd, "data/predictions.xlsx")
@@ -403,6 +401,7 @@ def check_and_predict(selected_model):
         load_unchecked_predictions_from_excel(data_file)
     except Exception as e:
         print(f"Error checking past predictions in {data_file}. {e}")
+    generate_daily_predictions(selected_model, daily_scheduler)
     daily_scheduler.start()
     try:
         while daily_scheduler.get_jobs():
