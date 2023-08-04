@@ -1,5 +1,4 @@
 """COPY OF make_predictions.py WITH CHANGES TO MAKE IT A SUITABLE RECURRING PROCESS"""
-
 from server.tweet_generator import gen_result_tweet, gen_prediction_tweet
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
 from apscheduler.events import (
@@ -7,10 +6,11 @@ from apscheduler.events import (
     EVENT_JOB_EXECUTED,
     EVENT_JOB_MISSED,
 )
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from server.get_odds import get_todays_odds
 from server.prep_tweet import prepare
+from dotenv import load_dotenv
 from data import LeagueStats
 import pandas as pd  # type: ignore
 import subprocess
@@ -20,8 +20,13 @@ import pytz  # type: ignore
 import time
 import os
 
-MODELS = ["mlb3year", "mlb2023", "mets6year"]
-selected_model = MODELS[0]
+# use model defined in .env or by default 'mlb3year'
+selected_model = "mlb3year"
+cwd = os.path.dirname(os.path.abspath(__file__))
+env_file_path = os.path.join(cwd, ".env")
+load_dotenv(env_file_path)
+ret = os.getenv("SELECTED_MODEL")
+selected_model = ret if ret is not None else selected_model
 
 global_correct: int = 0
 global_wrong: int = 0
@@ -33,8 +38,7 @@ mlb = LeagueStats()
 
 lock = threading.Lock()
 
-cwd = os.path.dirname(os.path.abspath(__file__))
-eastern = pytz.timezone('America/New_York')
+eastern = pytz.timezone("America/New_York")
 
 
 def update_row(row: pd.Series) -> pd.Series:
@@ -178,7 +182,8 @@ def load_unchecked_predictions_from_excel(
 
 def safely_prepare(row: pd.Series) -> None:
     """
-    function to orchastrate mutual exclusion to the prepare function
+    function to orchastrate mutual exclusion
+    -> protecting overrides on predictions.xlsx
 
     Args:
         row: pandas series with a single game's info
@@ -195,7 +200,9 @@ def print_next_job(event) -> None:
     time.sleep(1)
     next_job = daily_scheduler.get_jobs()[0] if daily_scheduler.get_jobs()[0] else None
     if next_job is not None:
-        print(f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... Next Scheduled Job")
+        print(
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... Next Scheduled Job"
+        )
         print(f"Job Name: {next_job.name}")
         run_time = next_job.next_run_time
         et_time = run_time.astimezone(eastern)
@@ -237,9 +244,7 @@ def generate_daily_predictions(
     try:
         df = pd.read_excel(data_file)
         tweet_times = pd.to_datetime(df["time_to_tweet"]).dt.tz_localize(pytz.utc)
-        existing_dates = (
-            tweet_times.dt.tz_convert(eastern).dt.date.unique()
-        )
+        existing_dates = tweet_times.dt.tz_convert(eastern).dt.date.unique()
         existing_dates_list = [str(date) for date in existing_dates]
         check_date = str(date.date())
         if check_date in existing_dates_list:
@@ -250,11 +255,14 @@ def generate_daily_predictions(
             if not to_tweet_today.empty:
                 print(
                     f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
-                    f"\nFound {str(len(to_tweet_today))} tweets in sheet that need to be scheduled\n"
+                    f"\nFound {str(len(to_tweet_today))} "
+                    f"tweets in sheet that need to be scheduled\n"
                 )
                 for _, row in to_tweet_today.iterrows():
                     scheduled_ids.append(row["game_id"])
-                    tweet_time = pd.to_datetime(row["time_to_tweet"]).tz_localize(pytz.utc)
+                    tweet_time = pd.to_datetime(row["time_to_tweet"]).tz_localize(
+                        pytz.utc
+                    )
                     schedule_job(scheduler, row, tweet_time)
                     print(
                         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
@@ -271,13 +279,15 @@ def generate_daily_predictions(
         f"\nMaking predictions using {selected_model} model\n"
     )
     for game in all_games:
-        if game['date'] != 'Today':
+        if game["date"] != "Today":
             continue
         try:
-            id, details = mlb.get_next_game(game['home_team'])
+            id, details = mlb.get_next_game(game["home_team"])
             if id in scheduled_ids:
                 continue
-            if details.get('game_date') != datetime.now(eastern).date().strftime('%Y-%m-%d'):
+            if details.get("game_date") != datetime.now(eastern).date().strftime(
+                "%Y-%m-%d"
+            ):
                 continue
             ret = mlb.predict_next_game(selected_model, game["home_team"])
             if ret is None or ret[0] is None:
@@ -322,7 +332,7 @@ def generate_daily_predictions(
             f"({info['away']} @ {info['home']}) to tweet schedule "
             f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
         )
-        scheduled_ids.append(info['game_id'])
+        scheduled_ids.append(info["game_id"])
         game_predictions.append(info)
 
     df_new = pd.DataFrame(game_predictions)
@@ -358,7 +368,7 @@ def generate_daily_predictions(
         "time_to_tweet",
         "tweeted?",
     ]
-    try: 
+    try:
         if len(df_new) > 0:
             df_new = df_new[column_order]
             df = pd.concat([df, df_new], ignore_index=True)
@@ -366,7 +376,7 @@ def generate_daily_predictions(
         else:
             print(
                 f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \n"
-                f"No new predictions made for games\n")
+                f"No new predictions made for games\n"
             )
     except Exception as _:
         print(
@@ -378,7 +388,7 @@ def generate_daily_predictions(
 
 daily_scheduler = BackgroundScheduler(
     job_defaults={"coalesce": False},
-    timezone=timezone(timedelta(hours=-4)),
+    timezone=eastern,
 )
 
 daily_scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
@@ -409,4 +419,4 @@ def check_and_predict(selected_model):
 
 
 if __name__ == "__main__":
-    check_and_predict(MODELS[0])
+    check_and_predict(selected_model)
