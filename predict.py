@@ -34,7 +34,7 @@ mlb = LeagueStats()
 lock = threading.Lock()
 
 cwd = os.path.dirname(os.path.abspath(__file__))
-eastern = pytz.timezone("US/Eastern")
+eastern = pytz.timezone('America/New_York')
 
 
 def update_row(row: pd.Series) -> pd.Series:
@@ -192,15 +192,16 @@ def safely_prepare(row: pd.Series) -> None:
 
 def print_next_job(event) -> None:
     """function to print details about next scheduled job"""
-    print(f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... Next Scheduled Job")
+    time.sleep(1)
     next_job = daily_scheduler.get_jobs()[0] if daily_scheduler.get_jobs()[0] else None
     if next_job is not None:
+        print(f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... Next Scheduled Job")
         print(f"Job Name: {next_job.name}")
         run_time = next_job.next_run_time
         et_time = run_time.astimezone(eastern)
         formatted_time = et_time.strftime("%I:%M %p")
         print(f"Next Execution Time: {formatted_time} ET")
-        print(f"Trigger: {next_job.trigger}\n")
+        time.sleep(1)
     return
 
 
@@ -242,10 +243,6 @@ def generate_daily_predictions(
         existing_dates_list = [str(date) for date in existing_dates]
         check_date = str(date.date())
         if check_date in existing_dates_list:
-            print(
-                f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
-                f"\nFound some tweets in spreadsheet that need to be scheduled\n"
-            )
             tt = pd.to_datetime(df["time_to_tweet"]).dt.tz_localize(pytz.utc)
             tt = tt.dt.tz_convert(eastern).dt.date
             mask = (tt == date.date()) & (df["tweeted?"] == False)
@@ -257,11 +254,11 @@ def generate_daily_predictions(
                 )
                 for _, row in to_tweet_today.iterrows():
                     scheduled_ids.append(row["game_id"])
-                    tweet_time = pd.to_datetime(row["tweet_time"])
+                    tweet_time = pd.to_datetime(row["time_to_tweet"]).tz_localize(pytz.utc)
                     schedule_job(scheduler, row, tweet_time)
                     print(
                         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
-                        f"({row['away']} @ {row['home']}) to tweet schedule (from sheet)"
+                        f"({row['away']} @ {row['home']}) to tweet schedule (from sheet) "
                         f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
                     )
     except FileNotFoundError:
@@ -277,12 +274,15 @@ def generate_daily_predictions(
         if game['date'] != 'Today':
             continue
         try:
+            id, details = mlb.get_next_game(game['home_team'])
+            if id in scheduled_ids:
+                continue
+            if details.get('game_date') != datetime.now(eastern).date().strftime('%Y-%m-%d'):
+                continue
             ret = mlb.predict_next_game(selected_model, game["home_team"])
             if ret is None or ret[0] is None:
                 continue
             winner, prediction, info = ret[0], ret[1], ret[2]
-            if info["game_id"] in scheduled_ids:
-                continue
         except Exception as e:
             print(f"Error predicting next game: \n{e}\n")
             continue
@@ -358,9 +358,21 @@ def generate_daily_predictions(
         "time_to_tweet",
         "tweeted?",
     ]
-    df_new = df_new[column_order]
-    df = pd.concat([df, df_new], ignore_index=True)
-    df.to_excel(data_file, index=False)
+    try: 
+        if len(df_new) > 0:
+            df_new = df_new[column_order]
+            df = pd.concat([df, df_new], ignore_index=True)
+            df.to_excel(data_file, index=False)
+        else:
+            print(
+                f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \n"
+                f"No new predictions made for games\n")
+            )
+    except Exception as _:
+        print(
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \n"
+            f"No new games to added to predictions.xlsx\n"
+        )
     return game_predictions
 
 
@@ -385,6 +397,7 @@ def check_and_predict(selected_model):
     try:
         while daily_scheduler.get_jobs():
             time.sleep(1)
+        time.sleep(5)
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
             f"\nAll daily prediction tweets complete. "
@@ -392,7 +405,7 @@ def check_and_predict(selected_model):
         )
     finally:
         daily_scheduler.shutdown(wait=True)
-        sys.exit(0)
+        return
 
 
 if __name__ == "__main__":
