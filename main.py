@@ -2,11 +2,11 @@ from apscheduler.events import EVENT_SCHEDULER_STARTED, EVENT_JOB_EXECUTED  # ty
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
 from apscheduler.triggers.cron import CronTrigger  # type: ignore
 from predict import check_and_predict
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # type: ignore
 from datetime import datetime
 import subprocess
 import time
-import pytz
+import pytz  # type: ignore
 import os
 
 # use model defined in .env or by default 'mlb3year'
