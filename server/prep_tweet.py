@@ -67,7 +67,7 @@ def prepare(game_info: pd.Series) -> None:
         retrieval_time if home_odds else df.at[row_index, "odds_retrieval_time"]
     )
     print(
-        f"\n{datetime.now().strftime('%D - %T')}... Odds checked for updates: "
+        f"\n{datetime.now().strftime('%D - %I:%M:%S %p')}... Odds checked for updates: "
         f"{game_info['away']} ({'no update' if not away_odds else str(away_odds)}) @ "
         f"{game_info['home']} ({'no update' if not home_odds else str(home_odds)})\n"
     )
@@ -115,7 +115,7 @@ def prepare(game_info: pd.Series) -> None:
             df.at[row_index, "tweeted?"] = True
     except subprocess.CalledProcessError as e:
         print(
-            f"\n{datetime.now().strftime('%D - %T')}... "
+                f"\n{datetime.now().strftime('%D - %I:%M:%S %p')}... "
             f"Exception calling tweet.py to tweet prediction: {e}"
         )
     df.to_excel(data_file, index=False)
