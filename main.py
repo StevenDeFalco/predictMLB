@@ -20,34 +20,6 @@ selected_model = ret if ret is not None else selected_model
 eastern = pytz.timezone("America/New_York")
 
 
-def run_predict_script(selected_model: str) -> None:
-    """
-    function to run the prediction script (predict.py)
-
-    Args:
-        selected_model: string name of the model to use for predictions
-    """
-    print(f"{datetime.now().strftime('%D - %I:%M:%S %p')}... \nCalling predict.py\n")
-    try:
-        process = subprocess.Popen(
-            ["python3", "predict.py", selected_model],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        while True:
-            output = process.stdout.readline()
-            if output == "" and process.poll() is not None:
-                break
-            if output:
-                print(output.strip())
-        return_code = process.poll()
-        if return_code != 0:
-            print(f"Error running predict.py. Return code: {return_code}")
-    except subprocess.CalledProcessError as e:
-        print(f"Error running predict.py: {e}")
-
-
 def print_next_job(event) -> None:
     """function to print details about next scheduled job"""
     time.sleep(1)
