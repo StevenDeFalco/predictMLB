@@ -1,5 +1,5 @@
 from apscheduler.events import EVENT_SCHEDULER_STARTED, EVENT_JOB_EXECUTED  # type: ignore
-from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
+from apscheduler.schedulers.blocking import BlockingScheduler # type: ignore
 from apscheduler.triggers.cron import CronTrigger  # type: ignore
 from predict import check_and_predict
 from dotenv import load_dotenv  # type: ignore
@@ -36,7 +36,7 @@ def print_next_job(event) -> None:
     return
 
 
-scheduler = BackgroundScheduler()
+scheduler = BlockingScheduler()
 scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
 scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
 
@@ -50,11 +50,6 @@ scheduler.add_job(
 )
 
 time.sleep(1)
-scheduler.start()
 
-# run indefinitely
-try:
-    while True:
-        pass
-except (KeyboardInterrupt, SystemExit):
-    pass
+# start the scheduler
+scheduler.start()
