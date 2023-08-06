@@ -8,7 +8,7 @@ import json
 import os
 
 # minimum time between requests
-REQUEST_COOLDOWN = 3600  # 1 hour
+REQUEST_COOLDOWN = 900 # 0.25 hour
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
