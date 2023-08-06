@@ -10,9 +10,9 @@ Twitter bot that publishs MLB game predictions made by a machine learning model 
 
 All of the data used in this project comes from *two major sources*: the MLB statsapi as accessed through the [MLB-StatsAPI](https://github.com/toddrob99/MLB-StatsAPI) python wrapper and the FiveThirtyEight [MLB ELO Dataset](https://www.kaggle.com/datasets/fivethirtyeight/fivethirtyeight-mlb-elo-dataset). 
 
-### data.py
+### `data.py`
 
-The first first part of this project entailed defining a generalized method for retrieving data from multiple sources and different API endpoints and combining that data into a  single datastructure that I could use to represent a single MLB game between two teams. The data.py module defines two classes: LeagueStats and a TeamStats (a child of LeagueStats). Once instantiated, LeagueStats offers many methods that can be used to make calls for specific data and data groups in a team agnostic format. For example we may do the following to intuitively extract information from the api. 
+The first first part of this project entailed defining a generalized method for retrieving data from multiple sources and different API endpoints and combining that data into a  single datastructure that I could use to represent a single MLB game between two teams. The `data.py` module defines two classes: `LeagueStats` and a `TeamStats` (a child of LeagueStats). Once instantiated, `LeagueStats` offers many methods that can be used to make calls for specific data and data groups in a team agnostic format. For example we may do the following to intuitively extract information from the api. 
 
 ```
 
@@ -30,7 +30,7 @@ print(f"W: {winning_pitcher}, L: {losing_pitcher}")
 
 ```
 
-Additionally, we can use the TeamStats class which must be instantiated for a single MLB team to retrieve data with a more focused scope. The TeamStats class inherit many methods from LeagueStats along with offerring a few unique ones, and some which are overriden to address the one team individually. As shown there are ways for a human to interact with the module and gain meaningful insight; however, the intent of this module is not to be used manually but it is meant to be a useful tool in the automation of large-scale data retrieval. Thus, this module offers a method to construct a single row (pandas.Series) with over 40 features representing one MLB game and of course a method that can be used to do this over a given length of time and merge all the rows into a single pandas.DataFrame: this method is get_data. The get_data method is the primary means for assembling the training dataset that is used to tune the ML model. 
+Additionally, we can use the `TeamStats` class which must be instantiated for a single MLB team to retrieve data with a more focused scope. The `TeamStats` class inherit many methods from `LeagueStats` along with offerring a few unique ones, and some which are overriden to address the one team individually. As shown there are ways for a human to interact with the module and gain meaningful insight; however, the intent of this module is not to be used manually but it is meant to be a useful tool in the automation of large-scale data retrieval. Thus, this module offers a method to construct a single row (`pandas.Series`) with over 40 features representing one MLB game and of course a method that can be used to do this over a given length of time and merge all the rows into a single `pandas.DataFrame`: this method is `get_data`. The `get_data` method is the primary means for assembling the training dataset that is used to tune the ML model. 
 
 ### What data is used?
 
@@ -52,20 +52,20 @@ Starting pitching is massively important in many games and often is a large fact
 
 For each team: pregame ELO, ELO probability to win, pregame ELO rating, pitcher RGS (Rolling Game Score), ELO rating probability. 
 
-These stats are conglomerates of many different factors that could go into a team's success and return that in some various composite stats. In this category, I largely trust the managers of the database; however, historical performance provides proof of merit for these stats. 
+These stats are conglomerates of many different factors that could go into a team's success and return that in some various composite stats. In this category, I largely trust the managers of the database and, for this reason, I hope to eventually migrate away from this category. 
 
-### data_retriever.py
+### `data_retriever.py`
 
-This script is the method through which large amounts of data retrieval (seasons at a time) can safely take place. The MLB statsapi has, in my experience, had some miscellaneous issues with failed requests and timeouts, so in this script the data retrieval is split into appropriately sized chunks to ensure data is written to disk frequently enough to avoid extensive repeated computation in case of API error. This script takes in a start date, end date, and optionally a team (or by deafult the entire league!) and will make calls to the aforementioned data.py module to construct data. All data is dumped into an excel (.xlsx) file in the format of a pandas DataFrame for easy viewing and eventual retrieval back into memory.  
+This script is the method through which large amounts of data retrieval (seasons at a time) can safely take place. The MLB statsapi has, in my experience, had some miscellaneous issues with failed requests and timeouts, so in this script the data retrieval is split into appropriately sized chunks to ensure data is written to disk frequently enough to avoid extensive repeated computation in case of API error. This script takes in a start date, end date, and optionally a team (or by deafult the entire league!) and will make calls to the aforementioned `data.py` module to construct data. All data is dumped into an excel (.xlsx) file in the format of a `pandas.DataFrame` for easy viewing and eventual retrieval back into memory.  
 
 
 ## Machine Learning and The Models
 
-After establishing the infrastructure to intake large amounts of data, the next step was to do so and prepare it for training the machine learning (ML) model. I collected a few different ranges of data and used them to, in turn train different models. 
+After establishing the infrastructure to intake large amounts of data, the next step was to collect a lot fo data and prepare it for training the machine learning (ML) model. I collected a few different ranges of data and used them to, in turn, train different models. 
 
 ### mets6year 
 
-The first model I planned to train was a model which solely was trained using New York Mets games from 2017 until the present (July 2023); I would then use this to predict only Mets games with the hope that the model might be capable of learning some features that have some discernable influence on the outcome of Mets games. 
+The first model I planned to train was a model which solely was trained using New York Mets games from 2017 until the present (July 2023); I would then use this to predict only Mets games with the hope that the model might be capable of learning some features that have some discernable influence on the outcome of Mets games. As of writing this, I generally moved away from this model and method of thinking (a team specific model); however, this idea was interesting to explore for hope of team-specific success indicators. 
 
 ### mlb2023 
 
@@ -113,11 +113,11 @@ With all the infrastructure in place to make predictions on upcoming games, I ju
 
 ### `main.py`
 
-In the main script itself, I instantiate a `apscheduler.BackgroundScheduler` which I use to add a recurring cron event for 9:30 am ET everyday which calls the `check_and_predict` function from `predict.py`. All that this script does is schedules that process for everyday at 9:30, waits for it to complete and schedules it again for the next day. 
+In the main script itself, I instantiate a `apscheduler.BlockingScheduler` which I use to add a recurring cron event for 9:30 am ET everyday which calls the `check_and_predict` function from `predict.py`. All that this script does is schedules that process for everyday at 9:30, waits for it to complete and schedules it again for the next day. 
 
 ### `predict.py` 
 
-In this module, first a new `apscheduler.BackgroundScheduler` is instantiated and then `check_and_predict` is ran. First it will run a function called `load_unchecked_predictions_from_excel` which, intuitively, loads predictions stored in the predictions sheet that haven't yet been checked for accuracy. This function checks whether the predictions were correct, and upon completion of this check will send a tweet summarizing number correct vs. wrong and additonally will highlight an upset that I had predicted correctly, if there is one of note (i.e. a betting underdog defeats a favorite). Next `generate_daily_predictions` is called and this function will load any tweets that need to be sent that day which are in the sheet already and it will add those to the daily schedule of tweets, it will additionally make predictions on all remaining games and those to the tweet schedule as well. Then throughout the day, the schedule will fork new processes to prepare and send tweets at their scheduled time (1 hour before gametime). Before tweets are sent, they must be run through the `prep_tweet.py` file which ensures that the odds are updated at least once within the hour and if not will update them; I limit my system to 1 odds request per hour because I use an API for that with a monthly request limit. 
+In this module, first a new `apscheduler.BackgroundScheduler` is instantiated and then `check_and_predict` is ran. First it will run a function called `load_unchecked_predictions_from_excel` which, intuitively, loads predictions stored in the predictions sheet that haven't yet been checked for accuracy. This function checks whether the predictions were correct, and upon completion of this check will send a tweet summarizing number correct vs. wrong and additonally will highlight an upset that I had predicted correctly, if there is one of note (i.e. a betting underdog defeats a favorite). Next `generate_daily_predictions` is called and this function will load any tweets that need to be sent that day which are in the sheet already and it will add those to the daily schedule of tweets, it will additionally make predictions on all remaining games and those to the tweet schedule as well. Then throughout the day, the schedule will fork new processes to prepare and send tweets at their scheduled time (1 hour before gametime). Before tweets are sent, they must be run through the `prep_tweet.py` file which ensures that the odds were updated within the last 15 minutes and if not will update them; I limit my system to 1 odds request per 15 minutes because I use an API for that with a monthly request limit. 
 
 ## Conclusion
 
