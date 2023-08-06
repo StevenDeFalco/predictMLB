@@ -198,7 +198,8 @@ def safely_prepare(row: pd.Series) -> None:
 def print_next_job(event) -> None:
     """function to print details about next scheduled job"""
     time.sleep(1)
-    next_job = daily_scheduler.get_jobs()[0] if daily_scheduler.get_jobs()[0] else None
+    ret = daily_scheduler.get_jobs()
+    next_job = ret[0] if (ret != []) else None
     if next_job is not None:
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... Next Scheduled Job"
