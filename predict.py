@@ -110,7 +110,13 @@ def load_unchecked_predictions_from_excel(
     Returns:
         df: data frame with past predictions
     """
-    global global_results
+    global global_results, global_correct, global_wrong, global_biggest_upset, global_upset_diff
+    # reset before checking results
+    global_correct = 0
+    global_wrong = 0
+    global_biggest_upset = None
+    global_upset_diff = 0
+    global_results = None
     try:
         df = pd.read_excel(file_name)
         df_missing_accuracy = df[df["prediction_accuracy"].isnull()]
