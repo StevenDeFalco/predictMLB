@@ -408,8 +408,8 @@ def check_and_predict(selected_model):
         load_unchecked_predictions_from_excel(data_file)
     except Exception as e:
         print(f"Error checking past predictions in {data_file}. {e}")
-    generate_daily_predictions(selected_model, daily_scheduler)
     daily_scheduler.start()
+    generate_daily_predictions(selected_model, daily_scheduler)
     try:
         while daily_scheduler.get_jobs():
             time.sleep(1)
