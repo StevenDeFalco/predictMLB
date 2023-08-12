@@ -1,5 +1,5 @@
 from apscheduler.events import EVENT_SCHEDULER_STARTED, EVENT_JOB_EXECUTED  # type: ignore
-from apscheduler.schedulers.blocking import BlockingScheduler # type: ignore
+from apscheduler.schedulers.blocking import BlockingScheduler  # type: ignore
 from apscheduler.triggers.cron import CronTrigger  # type: ignore
 from predict import check_and_predict
 from dotenv import load_dotenv  # type: ignore
@@ -25,7 +25,8 @@ def print_next_job(event) -> None:
     next_job = scheduler.get_jobs()[0] if scheduler.get_jobs()[0] else None
     if next_job is not None:
         print(
-            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... Next Scheduled Job"
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
+            f"Next Scheduled Job"
         )
         print(f"Job Name: {next_job.name}")
         run_time = next_job.next_run_time
