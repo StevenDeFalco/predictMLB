@@ -1,6 +1,6 @@
 """COPY OF make_predictions.py WITH CHANGES TO MAKE IT A SUITABLE RECURRING PROCESS"""
 from server.tweet_generator import gen_result_tweet, gen_prediction_tweet
-from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
+from apscheduler.schedulers.background import BlockingScheduler  # type: ignore
 from apscheduler.events import (
     EVENT_SCHEDULER_STARTED,
     EVENT_JOB_EXECUTED,
@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from server.get_odds import get_todays_odds
 from server.prep_tweet import prepare
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # type: ignore
 from data import LeagueStats
 import pandas as pd  # type: ignore
 import subprocess
@@ -39,6 +39,35 @@ mlb = LeagueStats()
 lock = threading.Lock()
 
 eastern = pytz.timezone("America/New_York")
+
+
+def print_next_job(event) -> None:
+    """function to print details about next scheduled job"""
+    time.sleep(1)
+    ret = daily_scheduler.get_jobs()
+    next_job = ret[0] if (ret != []) else None
+    if next_job is not None:
+        print(
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
+            f"Next Scheduled Job"
+        )
+        print(f"Job Name: {next_job.name}")
+        run_time = next_job.next_run_time
+        et_time = run_time.astimezone(eastern)
+        formatted_time = et_time.strftime("%I:%M %p")
+        print(f"Next Execution Time: {formatted_time} ET")
+        time.sleep(1)
+    return
+
+
+daily_scheduler = BlockingScheduler(
+    job_defaults={"coalesce": False},
+    timezone=eastern,
+)
+
+daily_scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
+daily_scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
+daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
 
 
 def update_row(row: pd.Series) -> pd.Series:
@@ -201,33 +230,15 @@ def safely_prepare(row: pd.Series) -> None:
         lock.release()
 
 
-def print_next_job(event) -> None:
-    """function to print details about next scheduled job"""
-    time.sleep(1)
-    ret = daily_scheduler.get_jobs()
-    next_job = ret[0] if (ret != []) else None
-    if next_job is not None:
-        print(
-            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... Next Scheduled Job"
-        )
-        print(f"Job Name: {next_job.name}")
-        run_time = next_job.next_run_time
-        et_time = run_time.astimezone(eastern)
-        formatted_time = et_time.strftime("%I:%M %p")
-        print(f"Next Execution Time: {formatted_time} ET")
-        time.sleep(1)
-    return
-
-
-def schedule_job(
-    scheduler: BackgroundScheduler, row: pd.Series, tweet_time: datetime
-) -> None:
+def schedule_job(row: pd.Series, tweet_time: datetime) -> None:
     """function to add safely_prepare(row) to the scheduler at tweet_time"""
-    scheduler.add_job(safely_prepare, args=[row], trigger="date", run_date=tweet_time)
+    daily_scheduler.add_job(
+        safely_prepare, args=[row], trigger="date", run_date=tweet_time
+    )
 
 
 def generate_daily_predictions(
-    model: str, scheduler: BackgroundScheduler, date: datetime = datetime.now()
+    model: str, date: datetime = datetime.now()
 ) -> List[Dict]:
     """
     function to generate predictions for one day of MLB games...
@@ -236,7 +247,6 @@ def generate_daily_predictions(
     Args:
         model: model to use
             -> must be defined in MODELS
-        scheduler: schedule to add the prediction tweet to
         date: datetime object representing day to predict on
 
     Returns:
@@ -270,7 +280,7 @@ def generate_daily_predictions(
                     tweet_time = pd.to_datetime(row["time_to_tweet"]).tz_localize(
                         pytz.utc
                     )
-                    schedule_job(scheduler, row, tweet_time)
+                    schedule_job(row, tweet_time)
                     print(
                         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
                         f"({row['away']} @ {row['home']}) to tweet schedule (from sheet) "
@@ -333,7 +343,7 @@ def generate_daily_predictions(
         info["tweet"] = tweet
         tweet_time = pd.to_datetime(info["datetime"]) - timedelta(hours=1)
         info["time_to_tweet"] = tweet_time.replace(tzinfo=None)
-        schedule_job(scheduler, info, tweet_time)
+        schedule_job(info, tweet_time)
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
             f"({info['away']} @ {info['home']}) to tweet schedule "
@@ -393,35 +403,28 @@ def generate_daily_predictions(
     return game_predictions
 
 
-daily_scheduler = BackgroundScheduler(
-    job_defaults={"coalesce": False},
-    timezone=eastern,
-)
-
-daily_scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
-daily_scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
-daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
-
 def check_and_predict(selected_model):
     data_file = os.path.join(cwd, "data/predictions.xlsx")
     try:
         load_unchecked_predictions_from_excel(data_file)
     except Exception as e:
         print(f"Error checking past predictions in {data_file}. {e}")
+    generate_daily_predictions(selected_model)
     daily_scheduler.start()
-    generate_daily_predictions(selected_model, daily_scheduler)
     try:
-        while daily_scheduler.get_jobs():
-            time.sleep(1)
-        time.sleep(5)
+        # wait for all jobs to complete
+        daily_scheduler.shutdown(wait=True)
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
             f"\nAll daily prediction tweets complete. "
             f"Exiting predict.py check_and_predict\n"
         )
-    finally:
-        daily_scheduler.shutdown(wait=True)
-        return
+    except (KeyboardInterrupt, SystemExit):
+        daily_scheduler.shutdown()
+        print(
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
+            f"Exiting predict.py due to exception"
+        )
 
 
 if __name__ == "__main__":
