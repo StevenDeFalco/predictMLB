@@ -411,20 +411,15 @@ def check_and_predict(selected_model):
         print(f"Error checking past predictions in {data_file}. {e}")
     generate_daily_predictions(selected_model)
     daily_scheduler.start()
-    try:
-        # wait for all jobs to complete
-        daily_scheduler.shutdown(wait=True)
-        print(
-            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
-            f"\nAll daily prediction tweets complete. "
-            f"Exiting predict.py check_and_predict\n"
-        )
-    except (KeyboardInterrupt, SystemExit):
-        daily_scheduler.shutdown()
-        print(
-            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
-            f"Exiting predict.py due to exception"
-        )
+
+    daily_scheduler.shutdown()
+    print(
+        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
+        f"\nAll daily prediction tweets complete. "
+        f"Exiting predict.py check_and_predict\n"
+    )
+
+    return
 
 
 if __name__ == "__main__":
