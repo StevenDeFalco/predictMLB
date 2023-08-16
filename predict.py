@@ -1,4 +1,3 @@
-"""COPY OF make_predictions.py WITH CHANGES TO MAKE IT A SUITABLE RECURRING PROCESS"""
 from server.tweet_generator import gen_result_tweet, gen_prediction_tweet
 from apscheduler.schedulers.background import BlockingScheduler  # type: ignore
 from apscheduler.events import (
@@ -306,7 +305,7 @@ def generate_daily_predictions(
                 "%Y-%m-%d"
             ):
                 continue
-            ret = mlb.predict_next_game(selected_model, game["home_team"])
+            ret = mlb.predict_next_game(game["home_team"])
             if ret is None or ret[0] is None:
                 continue
             winner, prediction, info = ret[0], ret[1], ret[2]
