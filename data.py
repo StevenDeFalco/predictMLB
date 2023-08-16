@@ -22,11 +22,6 @@ IDS = [
     "division_to_id",
     "id_to_division",
 ]
-MODELS = {
-    "mets6year": ["mets6year.txt", "mets6year_scaler.pkl"],
-    "mlb2023": ["mlb2023.txt", "mlb2023_scaler.pkl"],
-    "mlb3year": ["mlb3year.txt", "mlb3year_scaler.pkl"],
-}
 
 # to satisfy type checker...
 id_to_team: Dict[str, str] = {}
@@ -64,7 +59,7 @@ order1 = [
     "away-starter-season-avg",
     "home-top5-batting-avg",
     "away-top5-batting-avg",
-    "home-starter-season-strike_percentage",
+    "home-starter-season-strike-percentage",
     "away-starter-season-strike-percentage",
     "home-last10-avg-hits",
     "away-last10-avg-hits",
@@ -73,7 +68,7 @@ order1 = [
     "home-last10-avg-obp",
     "away-last10-avg-obp",
     "home-last10-avg-avg",
-    "away-lat10-avg-avg",
+    "away-last10-avg-avg",
     "home-last10-avg-rbi",
     "away-last10-avg-rbi",
     "home-starter-season-runs-per9",
@@ -99,7 +94,7 @@ order2 = [
     "home-last10-avg-runs-allowed",
     "home-starter-season-avg",
     "home-top5-batting-avg",
-    "home-starter-season-strike_percentage",
+    "home-starter-season-strike-percentage",
     "home-last10-avg-hits",
     "home-last10-avg-hits-allowed",
     "home-last10-avg-obp",
@@ -125,7 +120,7 @@ order2 = [
     "away-last10-avg-hits",
     "away-last10-avg-hits-allowed",
     "away-last10-avg-obp",
-    "away-lat10-avg-avg",
+    "away-last10-avg-avg",
     "away-last10-avg-rbi",
     "away-starter-season-runs-per9",
     "away-top5-stolenBases-avg",
@@ -668,7 +663,7 @@ class LeagueStats:
         return data
 
     def get_array(
-        self, gamePk: str, model_name: str, order: str = "order2"
+        self, gamePk: str, model_name: str, order: str
     ) -> Optional[Union[Tuple[None, str], np.ndarray]]:
         """
         method to get an array of a game's features to make predictions with
@@ -683,13 +678,6 @@ class LeagueStats:
         Returns:
             x_pred: features array to give to model
         """
-        env_file_path = os.path.join(cwd, ".env")
-        load_dotenv(env_file_path)
-        env_model = os.getenv("SELECTED_MODEL")
-        model_name = env_model if env_model else model_name
-        env_order = os.getenv("FEATURE_ORDER")
-        order = env_order if env_order else order
-
         with contextlib.redirect_stdout(io.StringIO()):
             df = self.make_game_df(gamePk)
         df.drop(
@@ -707,11 +695,11 @@ class LeagueStats:
         for col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
         df = scaler.transform(df)
-        x_pred = df.values
+        x_pred = df
         return x_pred
 
     def next_game_array(
-        self, team: str, model_name: str, order: str = "order2"
+        self, team: str, model_name: str, order: str
     ) -> Optional[Union[np.ndarray, Tuple[None, str]]]:
         """
         method to produce features array for a team's next unplayed game
@@ -733,16 +721,13 @@ class LeagueStats:
         return x_pred
 
     def predict_next_game(
-        self, model_name: str, team: str, order: str = "order2"
+        self, team: str, num_simulations=10, perturbation_scale=0.001
     ) -> Optional[Union[Tuple[None, str], Tuple[str, float, Dict]]]:
         """
         method to make prediction on team's next game using specified model
 
         Args:
-            model_name: string of model's name
-                -> must be in ./models/ and entry in MODELS
             team: string of team's name
-            order: feature order to be used (defaults to order2)
 
         Returns:
             winner: team predicted to win
@@ -751,8 +736,21 @@ class LeagueStats:
 
             or None, <error-msg>
         """
-        if model_name not in MODELS:
-            return None, f"{model_name} not found as valid model."
+
+        # retrieve model and order to use from .env
+        env_file_path = os.path.join(cwd, ".env")
+        load_dotenv(env_file_path)
+
+        env_model = os.getenv("SELECTED_MODEL")
+        if not env_model:
+            return None, "No 'SELECTED_MODEL' found in .env file for retrieval."
+        model_name = env_model
+
+        env_order = os.getenv("FEATURE_ORDER")
+        if not env_order:
+            return None, "No 'FEATURE_ORDER' found in .env file for retrieval."
+        order = env_order
+
         x_pred = self.next_game_array(team, model_name, order)
         if x_pred is None:
             return (
@@ -767,8 +765,16 @@ class LeagueStats:
                 f"Ensure it is placed in the models folder",
             )
         model = lgb.Booster(model_file=model_path)
-        prediction = model.predict(x_pred)
-        prediction = float(prediction[0])
+
+        # simulate multiple predictions with perturbed samples
+        simulated_predictions = []
+        for _ in range(num_simulations):
+            perturbation = np.random.normal(loc=0, scale=perturbation_scale, size=x_pred.shape)
+            perturbed_input = x_pred + perturbation
+            prediction = model.predict(perturbed_input)
+            prediction = float(prediction[0])
+            simulated_predictions.append(prediction)
+        mean_prediction = np.mean(simulated_predictions)
         next_game_ret = self.get_next_game(team)
         if not next_game_ret or not next_game_ret[1]:
             return (
@@ -789,11 +795,11 @@ class LeagueStats:
         game_info["series_status"] = next_game["series_status"]
         game_info["summary"] = next_game["summary"]
         game_info["game_id"] = next_game["game_id"]
-        if prediction >= 0.5:
+        if mean_prediction >= 0.5:
             winner = game_info["home"]
         else:
             winner = game_info["away"]
-        return winner, prediction, game_info
+        return winner, mean_prediction, game_info
 
 
 class TeamStats(LeagueStats):
@@ -913,28 +919,10 @@ class TeamStats(LeagueStats):
                 print(f"An exception has occured while saving data to disk: {e}")
         return data
 
-    def next_game_array(self, model_name: str) -> Optional[Union[np.ndarray, None]]:
-        """
-        method to produce features array for the team's next unplayed game
-
-        Args:
-            model_name: name of the model to be used
-                -> must be valid entry in MODELS
-
-        Returns:
-            x_pred: features array to give to model
-        """
-        next = self.get_next_game()
-        if not next or not next[0]:
-            return None
-        id = next[0]
-        x_pred = self.get_array(id, model_name)
-        return x_pred
-
 
 def main():
-    mlb = LeagueStats()
     # call class methods...
+    pass
 
 
 if __name__ == "__main__":
