@@ -8,8 +8,8 @@ import time
 import pytz  # type: ignore
 import os
 
-# use model defined in .env or by default 'mlb3year'
-selected_model = "mlb3year"
+# use model defined in .env or by default 'mlb4year'
+selected_model = "mlb4year"
 cwd = os.path.dirname(os.path.abspath(__file__))
 env_file_path = os.path.join(cwd, ".env")
 load_dotenv(env_file_path)
@@ -46,8 +46,7 @@ scheduler.add_job(
     check_and_predict,
     trigger=CronTrigger(
         hour=task_time.hour, minute=task_time.minute, second=task_time.second
-    ),
-    args=[selected_model],
+    )
 )
 
 time.sleep(1)
