@@ -44,6 +44,10 @@ def print_next_job(event) -> None:
     """function to print details about next scheduled job"""
     time.sleep(1)
     ret = daily_scheduler.get_jobs()
+    if daily_scheduler.running and len(ret) == 0:
+        time.sleep(5)
+        daily_scheduler.shutdown(wait=False)
+        return
     next_job = ret[0] if (ret != []) else None
     if next_job is not None:
         print(
@@ -138,7 +142,8 @@ def load_unchecked_predictions_from_excel(
     Returns:
         df: data frame with past predictions
     """
-    global global_results, global_correct, global_wrong, global_biggest_upset, global_upset_diff
+    global global_results, global_correct, global_wrong
+    global global_biggest_upset, global_upset_diff
     # reset before checking results
     global_correct = 0
     global_wrong = 0
@@ -409,9 +414,8 @@ def check_and_predict(selected_model):
     except Exception as e:
         print(f"Error checking past predictions in {data_file}. {e}")
     generate_daily_predictions(selected_model)
+    # start call is blocking, so scheduler shutdown in listener when last event finished
     daily_scheduler.start()
-
-    daily_scheduler.shutdown()
     print(
         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
         f"\nAll daily prediction tweets complete. "
