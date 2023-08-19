@@ -1,4 +1,3 @@
-"""COPY OF make_predictions.py WITH CHANGES TO MAKE IT A SUITABLE RECURRING PROCESS"""
 from server.tweet_generator import gen_result_tweet, gen_prediction_tweet
 from apscheduler.schedulers.background import BlockingScheduler  # type: ignore
 from apscheduler.events import (
@@ -20,8 +19,8 @@ import pytz  # type: ignore
 import time
 import os
 
-# use model defined in .env or by default 'mlb3year'
-selected_model = "mlb3year"
+# use model defined in .env or by default 'mlb4year'
+selected_model = "mlb4year"
 cwd = os.path.dirname(os.path.abspath(__file__))
 env_file_path = os.path.join(cwd, ".env")
 load_dotenv(env_file_path)
@@ -143,7 +142,8 @@ def load_unchecked_predictions_from_excel(
     Returns:
         df: data frame with past predictions
     """
-    global global_results, global_correct, global_wrong, global_biggest_upset, global_upset_diff
+    global global_results, global_correct, global_wrong
+    global global_biggest_upset, global_upset_diff
     # reset before checking results
     global_correct = 0
     global_wrong = 0
@@ -242,7 +242,7 @@ def schedule_job(row: pd.Series, tweet_time: datetime) -> None:
 
 
 def generate_daily_predictions(
-    model: str, date: datetime = datetime.now()
+    model: str = selected_model, date: datetime = datetime.now()
 ) -> List[Dict]:
     """
     function to generate predictions for one day of MLB games...
@@ -261,7 +261,7 @@ def generate_daily_predictions(
         pass
     data_file = os.path.join(cwd, "data/predictions.xlsx")
     scheduled_ids = []
-
+    model = selected_model
     try:
         df = pd.read_excel(data_file)
         tweet_times = pd.to_datetime(df["time_to_tweet"]).dt.tz_localize(pytz.utc)
@@ -310,7 +310,7 @@ def generate_daily_predictions(
                 "%Y-%m-%d"
             ):
                 continue
-            ret = mlb.predict_next_game(selected_model, game["home_team"])
+            ret = mlb.predict_next_game(game["home_team"])
             if ret is None or ret[0] is None:
                 continue
             winner, prediction, info = ret[0], ret[1], ret[2]
@@ -407,13 +407,13 @@ def generate_daily_predictions(
     return game_predictions
 
 
-def check_and_predict(selected_model):
+def check_and_predict():
     data_file = os.path.join(cwd, "data/predictions.xlsx")
     try:
         load_unchecked_predictions_from_excel(data_file)
     except Exception as e:
         print(f"Error checking past predictions in {data_file}. {e}")
-    generate_daily_predictions(selected_model)
+    generate_daily_predictions()
     # start call is blocking, so scheduler shutdown in listener when last event finished
     daily_scheduler.start()
     print(
@@ -426,4 +426,4 @@ def check_and_predict(selected_model):
 
 
 if __name__ == "__main__":
-    check_and_predict(selected_model)
+    check_and_predict()

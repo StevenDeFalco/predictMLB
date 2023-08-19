@@ -1,5 +1,6 @@
 from typing import List, Tuple, Optional, Union, Dict
 from datetime import datetime, timedelta, date
+from dotenv import load_dotenv  # type: ignore
 import lightgbm as lgb  # type: ignore
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
@@ -8,7 +9,6 @@ import contextlib
 import subprocess
 import pickle
 import time
-import csv
 import json
 import os
 import io
@@ -21,13 +21,7 @@ IDS = [
     "division_teams",
     "division_to_id",
     "id_to_division",
-    "elo_abbreviation",
 ]
-MODELS = {
-    "mets6year": ["mets6year.txt", "mets6year_scaler.pkl"],
-    "mlb2023": ["mlb2023.txt", "mlb2023_scaler.pkl"],
-    "mlb3year": ["mlb3year.txt", "mlb3year_scaler.pkl"],
-}
 
 # to satisfy type checker...
 id_to_team: Dict[str, str] = {}
@@ -37,11 +31,103 @@ league_dict: Dict[str, int] = {}
 division_teams: Dict[str, List[str]] = {}
 division_to_id: Dict[str, int] = {}
 id_to_division: Dict[int, str] = {}
-elo_abbreviation: Dict[str, str] = {}
 
 cwd = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-PATH_TO_ELO = os.path.join(cwd, "data/mlb_elo.csv")
+
+# feature orders
+order1 = [
+    "home-win-percentage",
+    "away-win-percentage",
+    "home-starter-season-era",
+    "away-starter-season-era",
+    "home-starter-season-win-percentage",
+    "away-starter-season-win-percentage",
+    "home-top5-hr-avg",
+    "away-top5-hr-avg",
+    "home-last10-avg-runs",
+    "away-last10-avg-runs",
+    "home-last10-avg-ops",
+    "away-last10-avg-ops",
+    "home-starter-season-whip",
+    "away-starter-season-whip",
+    "home-top5-rbi-avg",
+    "away-top5-rbi-avg",
+    "home-last10-avg-runs-allowed",
+    "away-last10-avg-runs-allowed",
+    "home-starter-season-avg",
+    "away-starter-season-avg",
+    "home-top5-batting-avg",
+    "away-top5-batting-avg",
+    "home-starter-season-strike-percentage",
+    "away-starter-season-strike-percentage",
+    "home-last10-avg-hits",
+    "away-last10-avg-hits",
+    "home-last10-avg-hits-allowed",
+    "away-last10-avg-hits-allowed",
+    "home-last10-avg-obp",
+    "away-last10-avg-obp",
+    "home-last10-avg-avg",
+    "away-last10-avg-avg",
+    "home-last10-avg-rbi",
+    "away-last10-avg-rbi",
+    "home-starter-season-runs-per9",
+    "away-starter-season-runs-per9",
+    "home-top5-stolenBases-avg",
+    "away-top5-stolenBases-avg",
+    "home-top5-totalBases-avg",
+    "away-top5-totalBases-avg",
+    "home-last10-avg-strikeouts",
+    "away-last10-avg-strikeouts",
+    "home-starter-career-era",
+    "away-starter-career-era",
+]
+order2 = [
+    "home-win-percentage",
+    "home-starter-season-era",
+    "home-starter-season-win-percentage",
+    "home-top5-hr-avg",
+    "home-last10-avg-runs",
+    "home-last10-avg-ops",
+    "home-starter-season-whip",
+    "home-top5-rbi-avg",
+    "home-last10-avg-runs-allowed",
+    "home-starter-season-avg",
+    "home-top5-batting-avg",
+    "home-starter-season-strike-percentage",
+    "home-last10-avg-hits",
+    "home-last10-avg-hits-allowed",
+    "home-last10-avg-obp",
+    "home-last10-avg-avg",
+    "home-last10-avg-rbi",
+    "home-starter-season-runs-per9",
+    "home-top5-stolenBases-avg",
+    "home-top5-totalBases-avg",
+    "home-last10-avg-strikeouts",
+    "home-starter-career-era",
+    "away-win-percentage",
+    "away-starter-season-era",
+    "away-starter-season-win-percentage",
+    "away-top5-hr-avg",
+    "away-last10-avg-runs",
+    "away-last10-avg-ops",
+    "away-starter-season-whip",
+    "away-top5-rbi-avg",
+    "away-last10-avg-runs-allowed",
+    "away-starter-season-avg",
+    "away-top5-batting-avg",
+    "away-starter-season-strike-percentage",
+    "away-last10-avg-hits",
+    "away-last10-avg-hits-allowed",
+    "away-last10-avg-obp",
+    "away-last10-avg-avg",
+    "away-last10-avg-rbi",
+    "away-starter-season-runs-per9",
+    "away-top5-stolenBases-avg",
+    "away-top5-totalBases-avg",
+    "away-last10-avg-strikeouts",
+    "away-starter-career-era",
+]
 
 
 class LeagueStats:
@@ -166,46 +252,6 @@ class LeagueStats:
         next = statsapi.schedule(game_id=gamePk)
         return gamePk, next[0]
 
-    def get_game_elo(self, gamePk: str) -> Dict:
-        """
-        method that will get the ELO ratings for a specific game given game id
-
-        Args:
-            gamePk: game id of the game to retrieve data from
-
-        Returns:
-            elo_stats: python dictionary with many fields containing elo data
-        """
-        game = statsapi.schedule(game_id=gamePk)[0]
-        home_team, away_team = game["home_name"], game["away_name"]
-        game_date = game["game_date"]
-        elo_stats = {}
-        with open(PATH_TO_ELO, "r") as elo:
-            elo_reader = csv.DictReader(elo)
-            home, away = (
-                elo_abbreviation.get(home_team),
-                elo_abbreviation.get(away_team),
-            )
-            # TODO: more efficient search alg
-            for row in elo_reader:
-                date = row["date"]
-                if (
-                    (row["team1"] == home)
-                    and (row["team2"] == away)
-                    and (date == game_date)
-                ):
-                    elo_stats["home-elo-pregame"] = row["elo1_pre"]
-                    elo_stats["away-elo-pregame"] = row["elo2_pre"]
-                    elo_stats["home-elo-probability"] = row["elo_prob1"]
-                    elo_stats["away-elo-probability"] = row["elo_prob2"]
-                    elo_stats["home-rating-pregame"] = row["rating1_pre"]
-                    elo_stats["away-rating-pregame"] = row["rating2_pre"]
-                    elo_stats["home-pitcher-rgs"] = row["pitcher1_rgs"]
-                    elo_stats["away-pitcher-rgs"] = row["pitcher2_rgs"]
-                    elo_stats["home-rating-probability"] = row["rating_prob1"]
-                    elo_stats["away-rating-probability"] = row["rating_prob2"]
-        return elo_stats
-
     def get_player_id(
         self, player_name: str, season: Optional[str] = None
     ) -> Optional[Union[str, None]]:
@@ -269,6 +315,10 @@ class LeagueStats:
             starters_stats[f"{pitcher[0]}-starter-season-runs-per9"] = season_stats[
                 "runsScoredPer9"
             ]
+            starters_stats[f"{pitcher[0]}-starter-season-whip"] = season_stats["whip"]
+            starters_stats[
+                f"{pitcher[0]}-starter-season-strike-percentage"
+            ] = season_stats["strikePercentage"]
             try:
                 win_pct = float(season_stats["winPercentage"])
             except ValueError:
@@ -314,7 +364,9 @@ class LeagueStats:
                 ops,
                 pitching_strikouts,
                 pitching_obp,
-            ) = (0, 0, 0, 0, 0.0, 0, 0.0)
+                avg,
+                rbi,
+            ) = (0, 0, 0, 0, 0.0, 0, 0.0, 0.0, 0)
             for id in game_ids:
                 box = statsapi.boxscore_data(id)
                 isHome = box["home"]["team"]["id"] == team[1]
@@ -328,6 +380,8 @@ class LeagueStats:
                 ops += float(game_stats["batting"]["ops"])
                 pitching_strikouts += game_stats["pitching"]["strikeOuts"]
                 pitching_obp += float(game_stats["pitching"]["obp"])
+                avg += float(game_stats["batting"]["avg"])
+                rbi += game_stats["batting"]["rbi"]
             last10_stats[f"{team[0]}-last10-avg-runs"] = (
                 runs / len(game_ids) if game_ids else None
             )
@@ -348,6 +402,12 @@ class LeagueStats:
             )
             last10_stats[f"{team[0]}-last10-avg-obp"] = (
                 pitching_obp / len(game_ids) if game_ids else None
+            )
+            last10_stats[f"{team[0]}-last10-avg-avg"] = (
+                avg / len(game_ids) if game_ids else None
+            )
+            last10_stats[f"{team[0]}-last10-avg-rbi"] = (
+                rbi / len(game_ids) if game_ids else None
             )
         return last10_stats
 
@@ -388,6 +448,53 @@ class LeagueStats:
         )
         return home_pct, away_pct
 
+    def get_team_leaders(self, gamePk: str) -> Dict:
+        """
+        method that will retrieve team_leaders in specific stats
+
+        Args:
+            gamePk: game id of the game to retrieve data from
+
+        Returns:
+            leaders: Dictionary of each team's leaders' stats in key areas
+        """
+        leaders: Dict = {}
+        game = statsapi.schedule(game_id=gamePk)[0]
+        home_id, away_id = game["home_id"], game["away_id"]
+        season = game["game_date"][0:4]
+        for team in [("home", home_id), ("away", away_id)]:
+            # average homeruns among top 5 players
+            hr = statsapi.team_leader_data(team[1], "homeRuns", season=season)
+            top5_hr = [int(item[2]) for item in hr[:5]]
+            top5_hr_avg = sum(top5_hr) / len(top5_hr)
+            leaders[f"{team[0]}-top5-hr-avg"] = top5_hr_avg
+
+            # average RBI among top 5 players
+            rbi = statsapi.team_leader_data(team[1], "runsBattedIn", season=season)
+            top5_rbi = [int(item[2]) for item in rbi[:5]]
+            top5_rbi_avg = sum(top5_rbi) / len(top5_rbi)
+            leaders[f"{team[0]}-top5-rbi-avg"] = top5_rbi_avg
+
+            # average batting avg among top 5 players
+            avg = statsapi.team_leader_data(team[1], "battingAverage", season=season)
+            top5_avg = [float(item[2]) for item in avg[:5]]
+            top5_avg_avg = sum(top5_avg) / len(top5_avg)
+            leaders[f"{team[0]}-top5-batting-avg"] = top5_avg_avg
+
+            # average stolen bases among top 5 players
+            sb = statsapi.team_leader_data(team[1], "stolenBases", season=season)
+            top5_sb = [int(item[2]) for item in sb[:5]]
+            top5_sb_avg = sum(top5_sb) / len(top5_sb)
+            leaders[f"{team[0]}-top5-stolenBases-avg"] = top5_sb_avg
+
+            # average total bases among top 5 players
+            bases = statsapi.team_leader_data(team[1], "totalBases", season=season)
+            top5_bases = [int(item[2]) for item in bases[:5]]
+            top5_bases_avg = sum(top5_bases) / len(top5_bases)
+            leaders[f"{team[0]}-top5-totalBases-avg"] = top5_bases_avg
+
+        return leaders
+
     def declareDf(self) -> pd.DataFrame:
         """
         method to declare data frame standard format and return an instance of it
@@ -415,6 +522,10 @@ class LeagueStats:
                 "away-last10-avg-strikeouts",
                 "home-last10-avg-obp",
                 "away-last10-avg-obp",
+                "home-last10-avg-avg",
+                "away-last10-avg-avg",
+                "home-last10-avg-rbi",
+                "away-last10-avg-rbi",
                 "home-starter-career-era",
                 "away-starter-career-era",
                 "home-starter-season-era",
@@ -425,16 +536,20 @@ class LeagueStats:
                 "away-starter-season-runs-per9",
                 "home-starter-season-win-percentage",
                 "away-starter-season-win-percentage",
-                "home-elo-pregame",
-                "away-elo-pregame",
-                "home-elo-probability",
-                "away-elo-probability",
-                "home-rating-pregame",
-                "away-rating-pregame",
-                "home-pitcher-rgs",
-                "away-pitcher-rgs",
-                "home-rating-probability",
-                "away-rating-probability",
+                "home-starter-season-whip",
+                "away-starter-season-whip",
+                "home-starter-season-strike-percentage",
+                "away-starter-season-strike-percentage",
+                "home-top5-hr-avg",
+                "away-top5-hr-avg",
+                "home-top5-rbi-avg",
+                "away-top5-rbi-avg",
+                "home-top5-batting-avg",
+                "away-top5-batting-avg",
+                "home-top5-stolenBases-avg",
+                "away-top5-stolenBases-avg",
+                "home-top5-totalBases-avg",
+                "away-top5-totalBases-avg",
             ]
         )
         return game_df
@@ -476,9 +591,9 @@ class LeagueStats:
         pitching_stats = self.get_starting_pitcher_stats(gamePk)
         for col in pitching_stats:
             game_df.at[0, col] = pitching_stats[col]
-        elo_stats = self.get_game_elo(gamePk)
-        for col in elo_stats:
-            game_df.at[0, col] = elo_stats[col]
+        leaders = self.get_team_leaders(gamePk)
+        for col in leaders:
+            game_df.at[0, col] = leaders[col]
         function_time = time.time() - start_time
         print(
             f"Constructed training data from {game['summary']}"
@@ -548,7 +663,7 @@ class LeagueStats:
         return data
 
     def get_array(
-        self, gamePk: str, model_name: str
+        self, gamePk: str, model_name: str, order: str
     ) -> Optional[Union[Tuple[None, str], np.ndarray]]:
         """
         method to get an array of a game's features to make predictions with
@@ -558,6 +673,7 @@ class LeagueStats:
             gamePk: id of the game to get features from
             model_name: name of the model to be used
                 -> must be valid entry in MODELS
+            order: order to put data features in
 
         Returns:
             x_pred: features array to give to model
@@ -568,81 +684,22 @@ class LeagueStats:
             columns=["game-id", "date", "home-team", "away-team", "did-home-win"],
             inplace=True,
         )
-        order1 = [
-            "home-win-percentage",
-            "away-win-percentage",
-            "home-starter-season-era",
-            "away-starter-season-era",
-            "home-elo-probability",
-            "away-elo-probability",
-            "home-rating-probability",
-            "away-rating-probability",
-            "home-starter-season-win-percentage",
-            "away-starter-season-win-percentage",
-            "home-last10-avg-runs",
-            "away-last10-avg-runs",
-            "home-last10-avg-ops",
-            "away-last10-avg-ops",
-            "home-last10-avg-runs-allowed",
-            "away-last10-avg-runs-allowed",
-            "home-starter-season-avg",
-            "away-starter-season-avg",
-            "home-elo-pregame",
-            "away-elo-pregame",
-            "home-pitcher-rgs",
-            "away-pitcher-rgs",
-            "home-last10-avg-hits",
-            "away-last10-avg-hits",
-            "home-last10-avg-hits-allowed",
-            "away-last10-avg-hits-allowed",
-            "home-last10-avg-obp",
-            "away-last10-avg-obp",
-            "home-rating-pregame",
-            "away-rating-pregame",
-            "home-starter-season-runs-per9",
-            "away-starter-season-runs-per9",
-            "home-last10-avg-strikeouts",
-            "away-last10-avg-strikeouts",
-            "home-starter-career-era",
-            "away-starter-career-era",
-        ]
-        df = df[order1]
-        scalers = os.path.join(cwd, 'models/scalers')
-        path_to_scaler = os.path.join(scalers, (model_name + '_scaler.pkl'))
+        if order == "order1":
+            df = df[order1]
+        elif order == "order2":
+            df = df[order2]
+        scalers = os.path.join(cwd, "models/scalers")
+        path_to_scaler = os.path.join(scalers, (model_name + "_scaler.pkl"))
         with open(path_to_scaler, "rb") as file:
             scaler = pickle.load(file)
-        columns_to_scale = [
-            "home-starter-season-era",
-            "away-starter-season-era",
-            "home-last10-avg-runs",
-            "away-last10-avg-runs",
-            "home-last10-avg-runs-allowed",
-            "away-last10-avg-runs-allowed",
-            "home-elo-pregame",
-            "away-elo-pregame",
-            "home-pitcher-rgs",
-            "away-pitcher-rgs",
-            "home-last10-avg-hits",
-            "away-last10-avg-hits",
-            "home-last10-avg-hits-allowed",
-            "away-last10-avg-hits-allowed",
-            "home-rating-pregame",
-            "away-rating-pregame",
-            "home-starter-season-runs-per9",
-            "away-starter-season-runs-per9",
-            "home-last10-avg-strikeouts",
-            "away-last10-avg-strikeouts",
-            "home-starter-career-era",
-            "away-starter-career-era",
-        ]
-        for col in df[columns_to_scale].columns:
+        for col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-        df[columns_to_scale] = scaler.transform(df[columns_to_scale])
-        x_pred = df.values
+        df = scaler.transform(df)
+        x_pred = df
         return x_pred
 
     def next_game_array(
-        self, team: str, model_name: str
+        self, team: str, model_name: str, order: str
     ) -> Optional[Union[np.ndarray, Tuple[None, str]]]:
         """
         method to produce features array for a team's next unplayed game
@@ -651,6 +708,7 @@ class LeagueStats:
             team: string of team's name (e.g. "New York Mets")
             model_name: name of the model to be used
                 -> must be valid entry in MODELS
+            order: feature order to be used (defaults to order2)
 
         Returns:
             x_pred: features array to give to model
@@ -659,18 +717,16 @@ class LeagueStats:
         if not next or not next[0]:
             return None, f"Error retrieving data for {team}'s next game."
         id = next[0]
-        x_pred = self.get_array(id, model_name)
+        x_pred = self.get_array(id, model_name, order)
         return x_pred
 
     def predict_next_game(
-        self, model_name: str, team: str
+        self, team: str, num_simulations=10, perturbation_scale=0.001
     ) -> Optional[Union[Tuple[None, str], Tuple[str, float, Dict]]]:
         """
         method to make prediction on team's next game using specified model
 
         Args:
-            model_name: string of model's name
-                -> must be in ./models/ and entry in MODELS
             team: string of team's name
 
         Returns:
@@ -680,9 +736,22 @@ class LeagueStats:
 
             or None, <error-msg>
         """
-        if model_name not in MODELS:
-            return None, f"{model_name} not found as valid model."
-        x_pred = self.next_game_array(team, model_name)
+
+        # retrieve model and order to use from .env
+        env_file_path = os.path.join(cwd, ".env")
+        load_dotenv(env_file_path)
+
+        env_model = os.getenv("SELECTED_MODEL")
+        if not env_model:
+            return None, "No 'SELECTED_MODEL' found in .env file for retrieval."
+        model_name = env_model
+
+        env_order = os.getenv("FEATURE_ORDER")
+        if not env_order:
+            return None, "No 'FEATURE_ORDER' found in .env file for retrieval."
+        order = env_order
+
+        x_pred = self.next_game_array(team, model_name, order)
         if x_pred is None:
             return (
                 None,
@@ -696,8 +765,16 @@ class LeagueStats:
                 f"Ensure it is placed in the models folder",
             )
         model = lgb.Booster(model_file=model_path)
-        prediction = model.predict(x_pred)
-        prediction = float(prediction[0])
+
+        # simulate multiple predictions with perturbed samples
+        simulated_predictions = []
+        for _ in range(num_simulations):
+            perturbation = np.random.normal(loc=0, scale=perturbation_scale, size=x_pred.shape)
+            perturbed_input = x_pred + perturbation
+            prediction = model.predict(perturbed_input)
+            prediction = float(prediction[0])
+            simulated_predictions.append(prediction)
+        mean_prediction = np.mean(simulated_predictions)
         next_game_ret = self.get_next_game(team)
         if not next_game_ret or not next_game_ret[1]:
             return (
@@ -718,11 +795,11 @@ class LeagueStats:
         game_info["series_status"] = next_game["series_status"]
         game_info["summary"] = next_game["summary"]
         game_info["game_id"] = next_game["game_id"]
-        if prediction >= 0.5:
+        if mean_prediction >= 0.5:
             winner = game_info["home"]
         else:
             winner = game_info["away"]
-        return winner, prediction, game_info
+        return winner, mean_prediction, game_info
 
 
 class TeamStats(LeagueStats):
@@ -842,28 +919,10 @@ class TeamStats(LeagueStats):
                 print(f"An exception has occured while saving data to disk: {e}")
         return data
 
-    def next_game_array(self, model_name: str) -> Optional[Union[np.ndarray, None]]:
-        """
-        method to produce features array for the team's next unplayed game
-
-        Args:
-            model_name: name of the model to be used
-                -> must be valid entry in MODELS
-
-        Returns:
-            x_pred: features array to give to model
-        """
-        next = self.get_next_game()
-        if not next or not next[0]:
-            return None
-        id = next[0]
-        x_pred = self.get_array(id, model_name)
-        return x_pred
-
 
 def main():
-    mlb = LeagueStats()
     # call class methods...
+    pass
 
 
 if __name__ == "__main__":
