@@ -17,6 +17,7 @@ import threading
 import statsapi  # type: ignore
 import pytz  # type: ignore
 import time
+import sys
 import os
 
 # use model defined in .env or by default 'mlb4year'
@@ -38,6 +39,9 @@ mlb = LeagueStats()
 lock = threading.Lock()
 
 eastern = pytz.timezone("America/New_York")
+
+# define daily_scheduler as global var
+daily_scheduler = None
 
 
 def print_next_job(event) -> None:
@@ -61,16 +65,6 @@ def print_next_job(event) -> None:
         print(f"Next Execution Time: {formatted_time} ET")
         time.sleep(1)
     return
-
-
-daily_scheduler = BlockingScheduler(
-    job_defaults={"coalesce": False},
-    timezone=eastern,
-)
-
-daily_scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
-daily_scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
-daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
 
 
 def update_row(row: pd.Series) -> pd.Series:
@@ -408,11 +402,23 @@ def generate_daily_predictions(
 
 
 def check_and_predict():
+    global daily_scheduler
+    daily_scheduler = None
     data_file = os.path.join(cwd, "data/predictions.xlsx")
     try:
         load_unchecked_predictions_from_excel(data_file)
     except Exception as e:
         print(f"Error checking past predictions in {data_file}. {e}")
+
+    # create daily scheduler
+    daily_scheduler = BlockingScheduler(
+        job_defaults={"coalesce": False},
+        timezone=eastern,
+    )
+    daily_scheduler.add_listener(print_next_job, EVENT_SCHEDULER_STARTED)
+    daily_scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
+    daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
+
     generate_daily_predictions()
     # start call is blocking, so scheduler shutdown in listener when last event finished
     daily_scheduler.start()
@@ -421,7 +427,8 @@ def check_and_predict():
         f"\nAll daily prediction tweets complete. "
         f"Exiting predict.py check_and_predict\n"
     )
-
+    time.sleep(10)
+    daily_scheduler = None
     return
 
 
