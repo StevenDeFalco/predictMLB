@@ -232,6 +232,24 @@ class LeagueStats:
         next = statsapi.schedule(game_id=gamePk)
         return gamePk, next[0]
 
+    def get_days_games(self, team: str, date: str) -> Optional[List[Dict]]:
+        """
+        method to get data about a team's games on the given day
+
+        Args:
+            team: name of team (e.g. "New York Mets")
+            date: date to get games for (MM/DD/YYYY)
+
+        Returns:
+            gamePks: id of the team's next to-be-played game
+            schedule: python dictionary with game details
+        """
+        id = team_to_id.get(team)
+        if not id:
+            return None
+        games = statsapi.schedule(start_date=date, end_date=date, team=id)
+        return games
+
     def get_last_game(
         self, team: str
     ) -> Optional[Union[Tuple[str, Dict], Tuple[None, None]]]:
@@ -720,6 +738,89 @@ class LeagueStats:
         x_pred = self.get_array(id, model_name, order)
         return x_pred
 
+    def predict_game(
+        self, gamePk: str, num_simulations=10, perturbation_scale=0.001
+    ) -> Optional[Union[Tuple[None, str], Tuple[str, float, Dict]]]:
+        """
+        method to make prediction on team's next game using specified model
+
+        Args:
+            team: string of team's name
+
+        Returns:
+            winner: team predicted to win
+            prediction: the model's raw predicted value [0,1]
+            game_info: python dictionary with info about the game
+
+            or None, <error-msg>
+        """
+
+        # retrieve model and order to use from .env
+        env_file_path = os.path.join(cwd, ".env")
+        load_dotenv(env_file_path)
+
+        env_model = os.getenv("SELECTED_MODEL")
+        if not env_model:
+            return None, "No 'SELECTED_MODEL' found in .env file for retrieval."
+        model_name = env_model
+
+        env_order = os.getenv("FEATURE_ORDER")
+        if not env_order:
+            return None, "No 'FEATURE_ORDER' found in .env file for retrieval."
+        order = env_order
+
+        x_pred = self.get_array(gamePk, model_name, order)
+
+        if x_pred is None:
+            return (
+                None,
+                "Failed to retrieve information about the game.",
+            )
+        model_path = os.path.join("./models/", model_name) + ".txt"
+        if not os.path.exists(model_path):
+            return (
+                None,
+                f"Failed to retrieve model, {model_name}. "
+                f"Ensure it is placed in the models folder",
+            )
+        model = lgb.Booster(model_file=model_path)
+
+        # simulate multiple predictions with perturbed samples
+        simulated_predictions = []
+        for _ in range(num_simulations):
+            perturbation = np.random.normal(
+                loc=0, scale=perturbation_scale, size=x_pred.shape
+            )
+            perturbed_input = x_pred + perturbation
+            prediction = model.predict(perturbed_input)
+            prediction = float(prediction[0])
+            simulated_predictions.append(prediction)
+        mean_prediction = np.mean(simulated_predictions)
+        game = statsapi.schedule(game_id=gamePk)[0]
+        if not game:
+            return (
+                None,
+                "Failed to retrieve information about game.",
+            )
+        game_info = {}
+        game_info["datetime"] = game.get("game_datetime")
+        game_info["date"] = game.get("game_date")
+        game_info["away"] = game.get("away_name")
+        game_info["home"] = game.get("home_name")
+        game_info["home"] = game.get("home_name")
+        game_info["home_probable"] = game.get("home_probable_pitcher")
+        game_info["away_probable"] = game.get("away_probable_pitcher")
+        game_info["venue"] = game.get("venue_name")
+        game_info["national_broadcasts"] = game.get("national_broadcasts")
+        game_info["series_status"] = game.get("series_status")
+        game_info["summary"] = game.get("summary")
+        game_info["game_id"] = game.get("game_id")
+        if mean_prediction >= 0.5:
+            winner = game_info["home"]
+        else:
+            winner = game_info["away"]
+        return winner, mean_prediction, game_info
+
     def predict_next_game(
         self, team: str, num_simulations=10, perturbation_scale=0.001
     ) -> Optional[Union[Tuple[None, str], Tuple[str, float, Dict]]]:
@@ -769,7 +870,9 @@ class LeagueStats:
         # simulate multiple predictions with perturbed samples
         simulated_predictions = []
         for _ in range(num_simulations):
-            perturbation = np.random.normal(loc=0, scale=perturbation_scale, size=x_pred.shape)
+            perturbation = np.random.normal(
+                loc=0, scale=perturbation_scale, size=x_pred.shape
+            )
             perturbed_input = x_pred + perturbation
             prediction = model.predict(perturbed_input)
             prediction = float(prediction[0])
