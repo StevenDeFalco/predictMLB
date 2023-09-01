@@ -17,7 +17,6 @@ import threading
 import statsapi  # type: ignore
 import pytz  # type: ignore
 import time
-import sys
 import os
 
 # use model defined in .env or by default 'mlb4year'
@@ -293,18 +292,30 @@ def generate_daily_predictions(
         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}..."
         f"\nMaking predictions using {selected_model} model\n"
     )
+
+    # loop to get game_ids of all games to make predictions on (saved to scheduled_ids)
     for game in all_games:
-        if game["date"] != "Today":
+        if game.get("date") != "Today":
             continue
-        try:
-            id, details = mlb.get_next_game(game["home_team"])
-            if id in scheduled_ids:
+        today = datetime.now().strftime("%m/%d/%Y")
+        teams_games = mlb.get_days_games(game.get("home_team"), today)
+        if not teams_games:
+            continue
+        for day_game in teams_games:
+            if day_game.get('game_datetime') != game['commence_time']:
                 continue
-            if details.get("game_date") != datetime.now(eastern).date().strftime(
-                "%Y-%m-%d"
+            if (day_game.get("game_id") not in scheduled_ids) and (
+                day_game.get("game_date")
+                == datetime.now(eastern).date().strftime("%Y-%m-%d")
             ):
-                continue
-            ret = mlb.predict_next_game(game["home_team"])
+                scheduled_ids.append((day_game.get("game_id"), game))
+
+    # loop to make predictions and schedule all the games in scheduled_ids
+    for gameObj in scheduled_ids:
+        try:
+            gamePk = gameObj[0]
+            game = gameObj[1]
+            ret = mlb.predict_game(gamePk)
             if ret is None or ret[0] is None:
                 continue
             winner, prediction, info = ret[0], ret[1], ret[2]
@@ -341,13 +352,12 @@ def generate_daily_predictions(
         info["tweet"] = tweet
         tweet_time = pd.to_datetime(info["datetime"]) - timedelta(hours=1)
         info["time_to_tweet"] = tweet_time.replace(tzinfo=None)
-        schedule_job(info, tweet_time)
+        # schedule_job(info, tweet_time)
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
             f"({info['away']} @ {info['home']}) to tweet schedule "
             f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
         )
-        scheduled_ids.append(info["game_id"])
         game_predictions.append(info)
 
     df_new = pd.DataFrame(game_predictions)
