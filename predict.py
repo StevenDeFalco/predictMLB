@@ -352,7 +352,7 @@ def generate_daily_predictions(
         info["tweet"] = tweet
         tweet_time = pd.to_datetime(info["datetime"]) - timedelta(hours=1)
         info["time_to_tweet"] = tweet_time.replace(tzinfo=None)
-        # schedule_job(info, tweet_time)
+        schedule_job(info, tweet_time)
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
             f"({info['away']} @ {info['home']}) to tweet schedule "
