@@ -302,6 +302,8 @@ def generate_daily_predictions(
         if not teams_games:
             continue
         for day_game in teams_games:
+            if day_game['game_datetime'] != game['commence_time']:
+                continue
             if (day_game.get("game_id") not in scheduled_ids) and (
                 day_game.get("game_date")
                 == datetime.now(eastern).date().strftime("%Y-%m-%d")
