@@ -148,6 +148,7 @@ def process_data(data):
             continue
         game_info["date"] = formatted_date
         game_info["time"] = make_twelve_hour(EST_date.strftime("%H:%M"))
+        game_info["commence_time"] = game["commence_time"]
         game_info["home_team"] = game["home_team"]
         game_info["away_team"] = game["away_team"]
         best_odds = get_best_odds(game)
