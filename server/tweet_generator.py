@@ -40,8 +40,8 @@ def gen_result_tweet(
     upset_loser_odds: str,
 ) -> str:
     msg = (
-        f"Of yesterday's MLB games, I predicted {correct_wrong} correctly, "
-        f"for a prediction accuracy of {percentage}. "
+        f"I was {percentage} ({correct_wrong}) accurate "
+        f"in predicting yesterday's MLB games."
     )
     if is_upset:
         msg += (

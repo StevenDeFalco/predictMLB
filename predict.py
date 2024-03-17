@@ -181,8 +181,8 @@ def load_unchecked_predictions_from_excel(
                 )
             else:
                 res = (
-                    f"Of yesterday's MLB games, I predicted {correct_wrong} correctly, "
-                    f"and thus had a prediction accuracy of {percentage}. "
+                    f"I was {percentage} ({correct_wrong}) accurate "
+                    f"in predicting yesterday's MLB games."
                 )
             if res:
                 try:
