@@ -44,6 +44,17 @@ eastern = pytz.timezone("America/New_York")
 daily_scheduler = None
 
 
+def get_data_path() -> str:
+    """
+    function that will fetch the current data sheet pathfrom .env file
+    """
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    env_file_path = os.path.join(cwd, ".env")
+    load_dotenv(env_file_path)
+    data_sheet = os.getenv("DATA_SHEET_PATH")
+    return data_sheet if data_sheet is not None else "data/predictions.xlsx"
+
+
 def print_next_job(event) -> None:
     """function to print details about next scheduled job"""
     time.sleep(1)
@@ -287,7 +298,7 @@ def generate_daily_predictions(
     if date is not datetime.now():
         # NOT IMPLEMENTED: generating predictions for future days
         pass
-    data_file = os.path.join(cwd, "data/predictions.xlsx")
+    data_file = os.path.join(cwd, get_data_path())
     scheduled_ids = []
     model = selected_model
     tweet_lines = []
@@ -433,7 +444,7 @@ def generate_daily_predictions(
     except Exception as _:
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \n"
-            f"No new games to added to predictions.xlsx\n"
+            f"No new games to added to data sheet\n"
         )
     return tweet_lines
 
@@ -498,7 +509,7 @@ def schedule_tweets(tweet_lines: List[str]) -> None:
 def check_and_predict():
     global daily_scheduler
     daily_scheduler = None
-    data_file = os.path.join(cwd, "data/predictions.xlsx")
+    data_file = os.path.join(cwd, get_data_path())
     try:
         load_unchecked_predictions_from_excel(data_file)
     except Exception as e:

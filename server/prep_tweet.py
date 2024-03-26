@@ -1,11 +1,23 @@
 from server.get_odds import get_todays_odds
 from server.tweet_generator import gen_game_line
+from dotenv import load_dotenv  # type: ignore
 from datetime import datetime
 import pandas as pd  # type: ignore
 import subprocess
 import os
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def get_data_path() -> str:
+    """
+    function that will fetch the current data sheet pathfrom .env file
+    """
+    parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    env_file_path = os.path.join(parent_dir, ".env")
+    load_dotenv(env_file_path)
+    data_sheet = os.getenv("DATA_SHEET_PATH")
+    return data_sheet if data_sheet is not None else "data/predictions.xlsx"
 
 
 def prepare(game_info: pd.Series) -> str:
@@ -23,7 +35,7 @@ def prepare(game_info: pd.Series) -> str:
     Returns:
         tweet: string of line to tweet
     """
-    data_file = os.path.join(parent_dir, "data/predictions.xlsx")
+    data_file = os.path.join(parent_dir, get_data_path())
     games, retrieval_time = get_todays_odds()
     home_odds, away_odds, home_odds_bookmaker, away_odds_bookmaker = (
         None,
