@@ -1,4 +1,3 @@
-from re import A
 from server.tweet_generator import gen_result_tweet, gen_game_line, create_tweets
 from apscheduler.schedulers.background import BlockingScheduler  # type: ignore
 from apscheduler.events import (
@@ -46,7 +45,10 @@ daily_scheduler = None
 
 def get_data_path() -> str:
     """
-    function that will fetch the current data sheet pathfrom .env file
+    function that will fetch the current data sheet path from .env file
+
+    Returns: 
+        str: path to the data sheet from the same directory as the .env file
     """
     cwd = os.path.dirname(os.path.abspath(__file__))
     env_file_path = os.path.join(cwd, ".env")
@@ -197,26 +199,7 @@ def load_unchecked_predictions_from_excel(
                     f"in predicting yesterday's MLB games."
                 )
             if res:
-                try:
-                    tweet_script = os.path.join(cwd, "server/tweet.py")
-                    process = subprocess.Popen(
-                        ["python3", tweet_script, res],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                    )
-                    process.wait()
-                    stdout, stderr = process.communicate()
-                    print(stdout.strip())
-                    print(stderr.strip())
-                    return_code = process.poll()
-                    if return_code != 0:
-                        print(f"Error calling tweet.py: return code={return_code}")
-                except subprocess.CalledProcessError as e:
-                    print(
-                        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
-                        f"\nError tweeting results{e}\n"
-                    )
+                send_tweet(res)
         df.update(df_missing_accuracy)
         df.to_excel(file_name, index=False)
         return df
@@ -240,43 +223,6 @@ def safely_prepare(row: pd.Series) -> str:
         tweet_line = prepare(row)
     finally:
         lock.release()
-    return tweet_line
-
-
-def schedule_job(row: pd.Series, tweet_time: datetime) -> None:
-    """function to add safely_prepare(row) to the scheduler at tweet_time"""
-    daily_scheduler.add_job(
-        safely_prepare, args=[row], trigger="date", run_date=tweet_time
-    )
-
-
-def tweet_for_row(row: pd.Series) -> str:
-    """
-    function to generate a single line in prediction tweet 
-
-    Args: 
-        row: pandas series with game information 
-
-    Returns:
-        tweet_line: string representing one line of the tweet
-            -> format: <winning-team> (ml odds) to defeat <losing-team> (ml odds)
-    """
-    home = row["home"] 
-    away = row["away"]
-    home_odds = row["home_odds"]
-    away_odds = row["away_odds"]
-    home_bookmaker = row["home_odds_bookmaker"]
-    away_bookmaker = row["away_odds_bookmaker"]
-    pred = row["predicted_winner"] 
-    if pred == home:
-        winner, loser = home, away 
-        winner_odds, loser_odds = (home_odds, home_bookmaker), (away_odds, away_bookmaker)
-    else:
-        winner, loser = away, home 
-        winner_odds, loser_odds = (away_odds, away_bookmaker), (home_odds, home_bookmaker)
-    winning_part = f"{winner} ({winner_odds[0]} on {winner_odds[1]})"
-    losing_part = f"{loser} ({loser_odds[0]} on {loser_odds[1]})"
-    tweet_line = f"{winning_part} to defeat {losing_part}"
     return tweet_line
 
 
@@ -320,7 +266,6 @@ def generate_daily_predictions(
                     f"games in sheet that need to be published (tweeted)\n"
                 )
                 for _, row in to_tweet_today.iterrows():
-                    # TODO: replace below loop with new tweet logic
                     scheduled_ids.append(row["game_id"])
                     line = safely_prepare(row)
                     tweet_lines.append(line)
@@ -449,6 +394,21 @@ def generate_daily_predictions(
     return tweet_lines
 
 
+def mark_as_tweeted(tweet: str) -> None:
+    """
+    Function to mark a tweet as tweeted in the data sheet
+
+    Args: 
+        tweet: tweet that has been sent and should be marked as sent
+    """
+    # read predictions in dataframe
+    df = pd.read_excel(get_data_path())
+    # find row with current tweet, and marked 'tweeted?' as True
+    df.loc[df['tweet'] == tweet, 'tweeted?'] = True 
+    # write back to excel
+    df.to_excel(get_data_path(), index=False)
+
+
 def send_tweet(tweet: str) -> bool:
     """
     Function to send a tweet 
@@ -476,6 +436,7 @@ def send_tweet(tweet: str) -> bool:
         if return_code != 0:
             print(f"Error calling tweet.py: return code={return_code}")
             return False 
+        mark_as_tweeted(tweet)
         return True
     except subprocess.CalledProcessError as e:
         print(
@@ -498,8 +459,18 @@ def schedule_tweets(tweet_lines: List[str]) -> None:
         None
     """
     tweets = create_tweets(tweet_lines)
-    tweet_time = datetime.now().replace(hour=9, minute=45, second=0, microsecond=0)
+    now = datetime.now(eastern)
+    start_time = now.replace(hour=9, minute=45, second=0, microsecond=0)
+    end_time = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    # add each tweet to the scheduler
     for tweet in tweets:
+        # check if missed normal tweet time (before 9:45 AM)
+        if start_time <= now <= end_time:
+            # If missed normal time (after 9:45) schedule tweet in 10 mins
+            tweet_time = now + timedelta(minutes=10)
+        else:
+            # schedule tweet for 9:45
+            tweet_time = datetime.now().replace(hour=9, minute=45, second=0, microsecond=0)
         daily_scheduler.add_job(
             send_tweet, args=[tweet], trigger="date", run_date=tweet_time
         )
