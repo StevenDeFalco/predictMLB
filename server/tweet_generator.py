@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import List
-from datetime import date
 import pandas as pd
+import pytz
 
 TWITTER_MAX_CHAR_COUNT = 268
 
@@ -51,7 +52,8 @@ def create_tweets(tweet_lines: List[str], MAX_TWEET_LENGTH=215, MAX_LINES_PER_TW
     tweets = []
     num_lines = len(tweet_lines)
     # get todays date
-    today = date.today()
+    eastern = pytz.timezone("America/New_York")
+    today = datetime.now(eastern).date()
     formatted_date = today.strftime("%d %B %Y")
     leadin_msg = f"Here are my predictions for {formatted_date}"
     # Map from number of games today --> games in tweet layout
@@ -78,7 +80,6 @@ def create_tweets(tweet_lines: List[str], MAX_TWEET_LENGTH=215, MAX_LINES_PER_TW
         18: [3,3,3,3,3,3]
     }
     tweets_layout = num_tweet_map[num_lines]
-    print(tweets_layout)
     num_tweets = len(tweets_layout)
     current_tweet = ""
     for i, line_ct in enumerate(tweets_layout):
