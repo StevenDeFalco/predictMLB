@@ -196,7 +196,7 @@ def load_unchecked_predictions_from_excel(
             else:
                 res = (
                     f"I was {percentage} ({correct_wrong}) accurate "
-                    f"in predicting yesterday's MLB games."
+                    f"in predicting yesterday's MLB games. "
                 )
             if res:
                 send_tweet(res)
@@ -246,6 +246,7 @@ def generate_daily_predictions(
         pass
     data_file = os.path.join(cwd, get_data_path())
     scheduled_ids = []
+    predicted_ids = []
     model = selected_model
     tweet_lines = []
     try:
@@ -267,6 +268,7 @@ def generate_daily_predictions(
                 )
                 for _, row in to_tweet_today.iterrows():
                     scheduled_ids.append(row["game_id"])
+                    predicted_ids.append(row["game_id"])
                     line = safely_prepare(row)
                     tweet_lines.append(line)
                     print(
@@ -304,6 +306,8 @@ def generate_daily_predictions(
     for gameObj in scheduled_ids:
         try:
             gamePk = gameObj[0]
+            if gamePk in predicted_ids:
+                continue
             game = gameObj[1]
             ret = mlb.predict_game(gamePk)
             if ret is None or ret[0] is None:
@@ -341,6 +345,7 @@ def generate_daily_predictions(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
             f"({info['away']} @ {info['home']}) to prediction tweet"
         )
+        tweet_lines.append(tweet)
         game_predictions.append(info)
 
     df_new = pd.DataFrame(game_predictions)
@@ -403,8 +408,11 @@ def mark_as_tweeted(tweet: str) -> None:
     """
     # read predictions in dataframe
     df = pd.read_excel(get_data_path())
-    # find row with current tweet, and marked 'tweeted?' as True
-    df.loc[df['tweet'] == tweet, 'tweeted?'] = True 
+    # split tweet to get individual tweet lines
+    lines = tweet.split('\n')
+    for line in lines:
+        # find row with current tweet, and marked 'tweeted?' as True
+        df.loc[df['tweet'] == line, 'tweeted?'] = True 
     # write back to excel
     df.to_excel(get_data_path(), index=False)
 
@@ -458,22 +466,32 @@ def schedule_tweets(tweet_lines: List[str]) -> None:
     Returns: 
         None
     """
+    global daily_scheduler
     tweets = create_tweets(tweet_lines)
     now = datetime.now(eastern)
     start_time = now.replace(hour=9, minute=45, second=0, microsecond=0)
     end_time = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    delay = 0
     # add each tweet to the scheduler
-    for tweet in tweets:
+    for tweet in tweets[::-1]:
+        now = datetime.now(eastern)
         # check if missed normal tweet time (before 9:45 AM)
         if start_time <= now <= end_time:
             # If missed normal time (after 9:45) schedule tweet in 10 mins
-            tweet_time = now + timedelta(minutes=10)
+            tweet_time = now + timedelta(minutes=1, seconds=delay)
         else:
-            # schedule tweet for 9:45
-            tweet_time = datetime.now().replace(hour=9, minute=45, second=0, microsecond=0)
+            # schedule tweet
+            tweet_time = datetime.now().replace(hour=9, minute=45, second=delay, microsecond=0)
+        print("Scheduling Tweet...\n")
         daily_scheduler.add_job(
             send_tweet, args=[tweet], trigger="date", run_date=tweet_time
         )
+        print(
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}..."
+            f"\n{tweet}\n"
+            f"...scheduled to be sent at {tweet_time.strftime('%d - %I:%M:%S %p')}\n"
+        )
+        delay += 5
     return
 
 
@@ -496,10 +514,11 @@ def check_and_predict():
     daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
 
     tweet_lines = generate_daily_predictions()
-    try:
+    '''try:
         schedule_tweets(tweet_lines)
     except Exception as e:
-        print(f"Error sending prediction tweet(s). {e}")
+        print(f"Error sending prediction tweet(s). {e}")'''
+    schedule_tweets(tweet_lines)
 
     # start call is blocking, so scheduler shutdown in listener when last event finished
     daily_scheduler.start()
