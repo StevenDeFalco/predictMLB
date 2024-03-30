@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List
 import pandas as pd
 import pytz
+import json
 
 TWITTER_MAX_CHAR_COUNT = 268
 
@@ -19,7 +20,13 @@ def gen_game_line(row: pd.Series) -> str:
     home = row["home"] 
     away = row["away"]
     home_odds = row["home_odds"]
+    # if home_odds are positive (e.g. +150)
+    if int(home_odds) >= 100:
+        home_odds = f"+{str(int(home_odds))}"
     away_odds = row["away_odds"]
+    # if away_odds are positive (e.g. +150)
+    if int(away_odds) >= 100:
+        away_odds = f"+{str(int(away_odds))}"
     home_bookmaker = row["home_odds_bookmaker"]
     away_bookmaker = row["away_odds_bookmaker"]
     pred = row["predicted_winner"] 
@@ -29,10 +36,16 @@ def gen_game_line(row: pd.Series) -> str:
     else:
         winner, loser = away, home 
         winner_odds, loser_odds = (away_odds, away_bookmaker), (home_odds, home_bookmaker)
-    winning_part = f"{winner} ({winner_odds[0]} on {winner_odds[1]})"
-    losing_part = f"{loser} ({loser_odds[0]} on {loser_odds[1]})"
-    winning_part = f"{winner} ({winner_odds[0]})"
-    losing_part = f"{loser} ({loser_odds[0]})"
+    # winning_part = f"{winner} ({winner_odds[0]} on {winner_odds[1]})"
+    # losing_part = f"{loser} ({loser_odds[0]} on {loser_odds[1]})"
+    with open('data/ids.json', 'r') as f:
+        data = json.load(f)
+    winner_id = data['team_to_id'][winner]
+    winner_abb = data['id_to_team'][str(winner_id)]['abbreviation']
+    loser_id = data['team_to_id'][loser]
+    loser_abb = data['id_to_team'][str(loser_id)]['abbreviation']
+    winning_part = f"{winner_abb} ({winner_odds[0]})"
+    losing_part = f"{loser_abb} ({loser_odds[0]})"
     tweet_line = f"{winning_part} to defeat {losing_part}"
     return tweet_line
 
@@ -55,29 +68,29 @@ def create_tweets(tweet_lines: List[str], MAX_TWEET_LENGTH=215, MAX_LINES_PER_TW
     eastern = pytz.timezone("America/New_York")
     today = datetime.now(eastern).date()
     formatted_date = today.strftime("%d %B %Y")
-    leadin_msg = f"Here are my predictions for {formatted_date}"
+    leadin_msg = f"Predictions for {formatted_date}"
     # Map from number of games today --> games in tweet layout
     # used to ensure even distribution of games across tweets
     # e.g. "7" --> (3,2,2) means first tweet has 3
     num_tweet_map = {
-        1: [1],
-        2: [2],
-        3: [3], 
-        4: [2,2],
-        5: [3,2],
-        6: [3,3],
-        7: [3,2,2], 
-        8: [3,3,2],
-        9: [3,3,3],
-        10: [3,3,2,2], 
-        11: [3,3,3,2],
-        12: [3,3,3,3],
-        13: [3,3,3,2,2],
-        14: [3,3,3,3,2],
-        15: [3,3,3,3,3],
-        16: [3,3,3,3,2,2],
-        17: [3,3,3,3,3,2],
-        18: [3,3,3,3,3,3]
+        1: [8],
+        2: [8],
+        3: [8], 
+        4: [8],
+        5: [8],
+        6: [8],
+        7: [8], 
+        8: [8],
+        9: [5,4],
+        10: [5,5], 
+        11: [6,5],
+        12: [6,6],
+        13: [7,6],
+        14: [7,7],
+        15: [8,7],
+        16: [8,8],
+        17: [6,6,5],
+        18: [6,6,6]
     }
     tweets_layout = num_tweet_map[num_lines]
     num_tweets = len(tweets_layout)
@@ -85,7 +98,7 @@ def create_tweets(tweet_lines: List[str], MAX_TWEET_LENGTH=215, MAX_LINES_PER_TW
     for i, line_ct in enumerate(tweets_layout):
         current_tweet = f"{leadin_msg} ({str(i+1)}/{str(num_tweets)})"
         for _ in range(int(line_ct)):
-            current_tweet += f"\n{tweet_lines[0]}"
+            current_tweet += f"\n• {tweet_lines[0]}"
             tweet_lines = tweet_lines[1:]
         tweets.append(current_tweet)
 
@@ -108,8 +121,7 @@ def gen_result_tweet(
     )
     if is_upset:
         msg += (
-            f"Among these predictions, I had correctly anticipated the {upset_winner} "
-            f"(+{upset_winner_odds}) defeating the {upset_loser} ({upset_loser_odds}) "
-            f"(Odds from 09:30 yesterday)"
+            f"My best pick was the {upset_winer} (+{upset_winner_odds}) upsetting"
+            f" the {upset_loser} ({upset_loser_odds}) (odds from 09:30 gameday)"
         )
     return msg
