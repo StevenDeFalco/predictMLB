@@ -121,7 +121,7 @@ def gen_result_tweet(
     )
     if is_upset:
         msg += (
-            f"My best pick was the {upset_winner} (+{upset_winner_odds}) upsetting"
+            f" My best pick was the {upset_winner} (+{upset_winner_odds}) upsetting"
             f" the {upset_loser} ({upset_loser_odds}) (odds from 09:30 gameday)"
         )
     return msg
