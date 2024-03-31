@@ -73,22 +73,22 @@ def create_tweets(tweet_lines: List[str], MAX_TWEET_LENGTH=215, MAX_LINES_PER_TW
     # used to ensure even distribution of games across tweets
     # e.g. "7" --> (3,2,2) means first tweet has 3
     num_tweet_map = {
-        1: [8],
-        2: [8],
-        3: [8], 
-        4: [8],
-        5: [8],
-        6: [8],
-        7: [8], 
-        8: [8],
+        1: [7],
+        2: [7],
+        3: [7], 
+        4: [7],
+        5: [7],
+        6: [7],
+        7: [7], 
+        8: [4,4],
         9: [5,4],
         10: [5,5], 
         11: [6,5],
         12: [6,6],
         13: [7,6],
         14: [7,7],
-        15: [8,7],
-        16: [8,8],
+        15: [5,5,5],
+        16: [6,5,5],
         17: [6,6,5],
         18: [6,6,6]
     }
