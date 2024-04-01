@@ -489,7 +489,7 @@ def schedule_tweets(tweet_lines: List[str]) -> None:
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}..."
             f"\n{tweet}\n"
-            f"...scheduled to be sent at {tweet_time.strftime('%d - %I:%M:%S %p')}\n"
+            f"...scheduled to be sent at {tweet_time.strftime('%D - %I:%M:%S %p')}\n"
         )
         delay += 5
     return
