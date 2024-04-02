@@ -50,7 +50,7 @@ def gen_game_line(row: pd.Series) -> str:
     return tweet_line
 
 
-def create_tweets(tweet_lines: List[str], MAX_TWEET_LENGTH=215, MAX_LINES_PER_TWEET=3) -> List[str]:
+def create_tweets(tweet_lines: List[str]) -> List[str]:
     """
     Function to create the individual tweets given the lines
 
@@ -71,7 +71,6 @@ def create_tweets(tweet_lines: List[str], MAX_TWEET_LENGTH=215, MAX_LINES_PER_TW
     leadin_msg = f"Predictions for {formatted_date}"
     # Map from number of games today --> games in tweet layout
     # used to ensure even distribution of games across tweets
-    # e.g. "7" --> (3,2,2) means first tweet has 3
     num_tweet_map = {
         1: [7],
         2: [7],
@@ -92,7 +91,7 @@ def create_tweets(tweet_lines: List[str], MAX_TWEET_LENGTH=215, MAX_LINES_PER_TW
         17: [6,6,5],
         18: [6,6,6]
     }
-    tweets_layout = num_tweet_map[num_lines]
+    tweets_layout = num_tweet_map.get(num_lines)
     num_tweets = len(tweets_layout)
     current_tweet = ""
     for i, line_ct in enumerate(tweets_layout):
