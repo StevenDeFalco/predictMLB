@@ -251,14 +251,14 @@ def generate_daily_predictions(
     tweet_lines = []
     try:
         df = pd.read_excel(data_file)
-        tweet_times = pd.to_datetime(df["time_to_tweet"]).dt.tz_localize(pytz.utc)
-        existing_dates = tweet_times.dt.tz_convert(eastern).dt.date.unique()
+        dates = pd.to_datetime(df["date"]).dt.tz_localize(pytz.utc)
+        existing_dates = dates.dt.tz_convert(eastern).dt.date.unique()
         existing_dates_list = [str(date) for date in existing_dates]
         check_date = str(date.date())
         if check_date in existing_dates_list:
-            tt = pd.to_datetime(df["time_to_tweet"]).dt.tz_localize(pytz.utc)
-            tt = tt.dt.tz_convert(eastern).dt.date
-            mask = (tt == date.date()) & (df["tweeted?"] == False)
+            d = pd.to_datetime(df["date"]).dt.tz_localize(pytz.utc)
+            d = d.dt.tz_convert(eastern).dt.date
+            mask = (d == date.date()) & (df["tweeted?"] == False)
             to_tweet_today = df[mask]
             if not to_tweet_today.empty:
                 print(
@@ -412,7 +412,10 @@ def mark_as_tweeted(tweet: str) -> None:
     lines = tweet.split('\n')
     for line in lines:
         # find row with current tweet, and marked 'tweeted?' as True
-        df.loc[df['tweet'] == line, 'tweeted?'] = True 
+        try:
+            df.loc[df['tweet'] == line, 'tweeted?'] = True 
+        except:
+            continue
     # write back to excel
     df.to_excel(get_data_path(), index=False)
 
