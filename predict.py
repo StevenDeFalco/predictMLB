@@ -227,7 +227,7 @@ def safely_prepare(row: pd.Series) -> str:
 
 
 def generate_daily_predictions(
-    model: str = selected_model, date: datetime = datetime.now()
+    model: str = selected_model, date = datetime.now()
 ) -> List:
     """
     function to generate predictions for one day of MLB games...
@@ -410,11 +410,18 @@ def mark_as_tweeted(tweet: str) -> None:
     df = pd.read_excel(get_data_path())
     # split tweet to get individual tweet lines
     lines = tweet.split('\n')
+    # find row with current tweet, and marked 'tweeted?' as True
     for line in lines:
-        # find row with current tweet, and marked 'tweeted?' as True
+        # preprocess tweet to get rid of formatting
+        line = line.replace("•", "")
+        line = line.strip()
         try:
             df.loc[df['tweet'] == line, 'tweeted?'] = True 
         except:
+            print(
+                f"Failed to mark tweet... \n"
+                f"'{line}' as tweeted."
+            )
             continue
     # write back to excel
     df.to_excel(get_data_path(), index=False)
