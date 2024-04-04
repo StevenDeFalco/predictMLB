@@ -285,6 +285,7 @@ def generate_daily_predictions(
         f"\nMaking predictions using {selected_model} model\n"
     )
 
+    scheduled_doubleheaders = []
     # loop to get game_ids of all games to make predictions on (saved to scheduled_ids)
     for game in all_games:
         if game.get("date") != "Today":
@@ -293,7 +294,30 @@ def generate_daily_predictions(
         teams_games = mlb.get_days_games(game.get("home_team"), today)
         if not teams_games:
             continue
-        for day_game in teams_games:
+        if len(teams_games) == 2:
+            first, second = teams_games[0], teams_games[1]
+            if first.get("game_id") and second.get("game_id") in scheduled_doubleheaders:
+                continue
+            for game in all_games:
+                if game['home_team'] != first['home_name']:
+                    continue
+                doubleheader_game = first.get("game_num")
+                scheduled_ids.append((first.get("game_id"), game, doubleheader_game))
+                scheduled_doubleheaders.append(first.get("game_id"))
+                first_ct = game.get("commence_time")
+                break
+            for game in all_games:
+                if game['home_team'] != second['home_name']:
+                    continue
+                if game.get("commence_time") == first_ct:
+                    continue
+                doubleheader_game = second.get("game_num")
+                scheduled_ids.append((second.get("game_id"), game, doubleheader_game))
+                scheduled_doubleheaders.append(second.get("game_id"))
+                break
+            continue
+        elif len(teams_games) == 1:
+            day_game = teams_games[0]
             if day_game['game_datetime'] != game['commence_time']:
                 continue
             if (day_game.get("game_id") not in scheduled_ids) and (
@@ -316,6 +340,8 @@ def generate_daily_predictions(
         except Exception as e:
             print(f"Error predicting next game: \n{e}\n")
             continue
+        if len(gameObj) == 3:
+            doubleheader_game = gameObj[2]
         if not winner:
             continue
         home, away = info["home"], info["away"]
@@ -338,6 +364,8 @@ def generate_daily_predictions(
         info["losing_pitcher"] = None
         info["tweeted?"] = False
         tweet = gen_game_line(info)
+        if len(gameObj) == 3:
+            tweet = f"{tweet} ({game['time']})"
         info["tweet"] = tweet
         tweet_time = datetime.now().replace(hour=9, minute=45, second=0, microsecond=0)
         info["time_to_tweet"] = tweet_time.replace(tzinfo=None)
