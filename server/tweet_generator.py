@@ -72,12 +72,12 @@ def create_tweets(tweet_lines: List[str]) -> List[str]:
     # Map from number of games today --> games in tweet layout
     # used to ensure even distribution of games across tweets
     num_tweet_map = {
-        1: [7],
-        2: [7],
-        3: [7], 
-        4: [7],
-        5: [7],
-        6: [7],
+        1: [1],
+        2: [2],
+        3: [3], 
+        4: [4],
+        5: [5],
+        6: [6],
         7: [7], 
         8: [4,4],
         9: [5,4],
@@ -95,7 +95,10 @@ def create_tweets(tweet_lines: List[str]) -> List[str]:
     num_tweets = len(tweets_layout)
     current_tweet = ""
     for i, line_ct in enumerate(tweets_layout):
-        current_tweet = f"{leadin_msg} ({str(i+1)}/{str(num_tweets)})"
+        if num_tweets == 1:
+            current_tweet = f"{leadin_msg}"
+        else:
+            current_tweet = f"{leadin_msg} ({str(i+1)}/{str(num_tweets)})"
         for _ in range(int(line_ct)):
             current_tweet += f"\n• {tweet_lines[0]}"
             tweet_lines = tweet_lines[1:]
