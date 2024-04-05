@@ -93,7 +93,7 @@ def update_row(row: pd.Series) -> pd.Series:
     global global_correct, global_wrong, global_biggest_upset, global_upset_diff
     predicted_winner = row["predicted_winner"]
     id = row["game_id"]
-    game = statsapi.schedule(game_id=id)[0]
+    game = statsapi.schedule(game_id=id)[-1]
     if game["status"] != "Final":
         return row
     actual_winner = game.get("winning_team")
