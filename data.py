@@ -1,5 +1,6 @@
 from typing import List, Tuple, Optional, Union, Dict
 from datetime import datetime, timedelta, date
+from urllib.error import HTTPError
 from dotenv import load_dotenv  # type: ignore
 import lightgbm as lgb  # type: ignore
 import pandas as pd  # type: ignore
@@ -327,21 +328,38 @@ class LeagueStats:
             if not career_stats:
                 continue
             career_stats = career_stats[0]["stats"]
-            starters_stats[f"{pitcher[0]}-starter-career-era"] = career_stats["era"]
-            starters_stats[f"{pitcher[0]}-starter-season-era"] = season_stats["era"]
-            starters_stats[f"{pitcher[0]}-starter-season-avg"] = season_stats["avg"]
-            starters_stats[f"{pitcher[0]}-starter-season-runs-per9"] = season_stats[
-                "runsScoredPer9"
-            ]
-            starters_stats[f"{pitcher[0]}-starter-season-whip"] = season_stats["whip"]
-            starters_stats[
-                f"{pitcher[0]}-starter-season-strike-percentage"
-            ] = season_stats["strikePercentage"]
-            try:
-                win_pct = float(season_stats["winPercentage"])
-            except ValueError:
-                win_pct = None
-            starters_stats[f"{pitcher[0]}-starter-season-win-percentage"] = win_pct
+            starters_stats[f"{pitcher[0]}-starter-career-era"] = career_stats.get("era")
+            # if no season stats, use career stats in place
+            if season_stats:
+                starters_stats[f"{pitcher[0]}-starter-season-era"] = season_stats.get("era")
+                starters_stats[f"{pitcher[0]}-starter-season-avg"] = season_stats.get("avg")
+                starters_stats[f"{pitcher[0]}-starter-season-runs-per9"] = season_stats.get(
+                    "runsScoredPer9"
+                )
+                starters_stats[f"{pitcher[0]}-starter-season-whip"] = season_stats.get("whip")
+                starters_stats[
+                    f"{pitcher[0]}-starter-season-strike-percentage"
+                ] = season_stats.get("strikePercentage")
+                try:
+                    win_pct = float(season_stats["winPercentage"])
+                except ValueError:
+                    win_pct = None
+                starters_stats[f"{pitcher[0]}-starter-season-win-percentage"] = win_pct
+            else: # if season_stats is empty use career stats
+                starters_stats[f"{pitcher[0]}-starter-season-era"] = career_stats.get("era")
+                starters_stats[f"{pitcher[0]}-starter-season-avg"] = career_stats.get("avg")
+                starters_stats[f"{pitcher[0]}-starter-season-runs-per9"] = career_stats.get(
+                    "runsScoredPer9"
+                )
+                starters_stats[f"{pitcher[0]}-starter-season-whip"] = career_stats.get("whip")
+                starters_stats[
+                    f"{pitcher[0]}-starter-season-strike-percentage"
+                ] = career_stats.get("strikePercentage")
+                try:
+                    win_pct = float(career_stats["winPercentage"])
+                except ValueError:
+                    win_pct = None
+                starters_stats[f"{pitcher[0]}-starter-season-win-percentage"] = win_pct
         return starters_stats
 
     def get_last10_stats(self, gamePk: str) -> Dict:
@@ -481,6 +499,10 @@ class LeagueStats:
         home_id, away_id = game["home_id"], game["away_id"]
         season = game["game_date"][0:4]
         for team in [("home", home_id), ("away", away_id)]:
+            # if first game of the season, use last season's data
+            isFirstGame = True if statsapi.last_game(team[1]) is None else False
+            season = (int(season) - 1) if isFirstGame else season
+
             # average homeruns among top 5 players
             hr = statsapi.team_leader_data(team[1], "homeRuns", season=season)
             top5_hr = [int(item[2]) for item in hr[:5]]

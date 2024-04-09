@@ -1,4 +1,4 @@
-from server.tweet_generator import gen_result_tweet, gen_prediction_tweet
+from server.tweet_generator import gen_result_tweet, gen_game_line, create_tweets
 from apscheduler.schedulers.background import BlockingScheduler  # type: ignore
 from apscheduler.events import (
     EVENT_SCHEDULER_STARTED,
@@ -43,6 +43,20 @@ eastern = pytz.timezone("America/New_York")
 daily_scheduler = None
 
 
+def get_data_path() -> str:
+    """
+    function that will fetch the current data sheet path from .env file
+
+    Returns: 
+        str: path to the data sheet from the same directory as the .env file
+    """
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    env_file_path = os.path.join(cwd, ".env")
+    load_dotenv(env_file_path)
+    data_sheet = os.getenv("DATA_SHEET_PATH")
+    return data_sheet if data_sheet is not None else "data/predictions.xlsx"
+
+
 def print_next_job(event) -> None:
     """function to print details about next scheduled job"""
     time.sleep(1)
@@ -79,7 +93,7 @@ def update_row(row: pd.Series) -> pd.Series:
     global global_correct, global_wrong, global_biggest_upset, global_upset_diff
     predicted_winner = row["predicted_winner"]
     id = row["game_id"]
-    game = statsapi.schedule(game_id=id)[0]
+    game = statsapi.schedule(game_id=id)[-1]
     if game["status"] != "Final":
         return row
     actual_winner = game.get("winning_team")
@@ -182,29 +196,10 @@ def load_unchecked_predictions_from_excel(
             else:
                 res = (
                     f"I was {percentage} ({correct_wrong}) accurate "
-                    f"in predicting yesterday's MLB games."
+                    f"in predicting yesterday's MLB games. "
                 )
             if res:
-                try:
-                    tweet_script = os.path.join(cwd, "server/tweet.py")
-                    process = subprocess.Popen(
-                        ["python3", tweet_script, res],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                    )
-                    process.wait()
-                    stdout, stderr = process.communicate()
-                    print(stdout.strip())
-                    print(stderr.strip())
-                    return_code = process.poll()
-                    if return_code != 0:
-                        print(f"Error calling tweet.py: return code={return_code}")
-                except subprocess.CalledProcessError as e:
-                    print(
-                        f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
-                        f"\nError tweeting results{e}\n"
-                    )
+                send_tweet(res)
         df.update(df_missing_accuracy)
         df.to_excel(file_name, index=False)
         return df
@@ -212,31 +207,28 @@ def load_unchecked_predictions_from_excel(
         return None
 
 
-def safely_prepare(row: pd.Series) -> None:
+def safely_prepare(row: pd.Series) -> str:
     """
     function to orchastrate mutual exclusion
     -> protecting overrides on predictions.xlsx
 
     Args:
         row: pandas series with a single game's info
+
+    Returns: 
+        tweet_line = line of tweet from the game prepared
     """
     try:
         lock.acquire()
-        prepare(row)
+        tweet_line = prepare(row)
     finally:
         lock.release()
-
-
-def schedule_job(row: pd.Series, tweet_time: datetime) -> None:
-    """function to add safely_prepare(row) to the scheduler at tweet_time"""
-    daily_scheduler.add_job(
-        safely_prepare, args=[row], trigger="date", run_date=tweet_time
-    )
+    return tweet_line
 
 
 def generate_daily_predictions(
-    model: str = selected_model, date: datetime = datetime.now()
-) -> List[Dict]:
+    model: str = selected_model, date = datetime.now()
+) -> List:
     """
     function to generate predictions for one day of MLB games...
     ...and save them with other pertinent game information
@@ -247,41 +239,41 @@ def generate_daily_predictions(
         date: datetime object representing day to predict on
 
     Returns:
-        game_predictions: list of dictionaries with prediction + odds information
+        tweet_lines: List of strings, each representing a line of the tweet 
     """
     if date is not datetime.now():
         # NOT IMPLEMENTED: generating predictions for future days
         pass
-    data_file = os.path.join(cwd, "data/predictions.xlsx")
+    data_file = os.path.join(cwd, get_data_path())
     scheduled_ids = []
+    predicted_ids = []
     model = selected_model
+    tweet_lines = []
     try:
         df = pd.read_excel(data_file)
-        tweet_times = pd.to_datetime(df["time_to_tweet"]).dt.tz_localize(pytz.utc)
-        existing_dates = tweet_times.dt.tz_convert(eastern).dt.date.unique()
+        dates = pd.to_datetime(df["date"]).dt.tz_localize(pytz.utc)
+        existing_dates = dates.dt.tz_convert(eastern).dt.date.unique()
         existing_dates_list = [str(date) for date in existing_dates]
         check_date = str(date.date())
         if check_date in existing_dates_list:
-            tt = pd.to_datetime(df["time_to_tweet"]).dt.tz_localize(pytz.utc)
-            tt = tt.dt.tz_convert(eastern).dt.date
-            mask = (tt == date.date()) & (df["tweeted?"] == False)
+            d = pd.to_datetime(df["date"]).dt.tz_localize(pytz.utc)
+            d = d.dt.tz_convert(eastern).dt.date
+            mask = (d == date.date()) & (df["tweeted?"] == False)
             to_tweet_today = df[mask]
             if not to_tweet_today.empty:
                 print(
                     f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
                     f"\nFound {str(len(to_tweet_today))} "
-                    f"tweets in sheet that need to be scheduled\n"
+                    f"games in sheet that need to be published (tweeted)\n"
                 )
                 for _, row in to_tweet_today.iterrows():
                     scheduled_ids.append(row["game_id"])
-                    tweet_time = pd.to_datetime(row["time_to_tweet"]).tz_localize(
-                        pytz.utc
-                    )
-                    schedule_job(row, tweet_time)
+                    predicted_ids.append(row["game_id"])
+                    line = safely_prepare(row)
+                    tweet_lines.append(line)
                     print(
                         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
-                        f"({row['away']} @ {row['home']}) to tweet schedule (from sheet) "
-                        f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
+                        f"({row['away']} @ {row['home']}) to tweet (from sheet)"
                     )
     except FileNotFoundError:
         df = pd.DataFrame()
@@ -293,6 +285,7 @@ def generate_daily_predictions(
         f"\nMaking predictions using {selected_model} model\n"
     )
 
+    scheduled_doubleheaders = []
     # loop to get game_ids of all games to make predictions on (saved to scheduled_ids)
     for game in all_games:
         if game.get("date") != "Today":
@@ -301,7 +294,30 @@ def generate_daily_predictions(
         teams_games = mlb.get_days_games(game.get("home_team"), today)
         if not teams_games:
             continue
-        for day_game in teams_games:
+        if len(teams_games) == 2:
+            first, second = teams_games[0], teams_games[1]
+            if first.get("game_id") and second.get("game_id") in scheduled_doubleheaders:
+                continue
+            for game in all_games:
+                if game['home_team'] != first['home_name']:
+                    continue
+                doubleheader_game = first.get("game_num")
+                scheduled_ids.append((first.get("game_id"), game, doubleheader_game))
+                scheduled_doubleheaders.append(first.get("game_id"))
+                first_ct = game.get("commence_time")
+                break
+            for game in all_games:
+                if game['home_team'] != second['home_name']:
+                    continue
+                if game.get("commence_time") == first_ct:
+                    continue
+                doubleheader_game = second.get("game_num")
+                scheduled_ids.append((second.get("game_id"), game, doubleheader_game))
+                scheduled_doubleheaders.append(second.get("game_id"))
+                break
+            continue
+        elif len(teams_games) == 1:
+            day_game = teams_games[0]
             if day_game['game_datetime'] != game['commence_time']:
                 continue
             if (day_game.get("game_id") not in scheduled_ids) and (
@@ -314,6 +330,8 @@ def generate_daily_predictions(
     for gameObj in scheduled_ids:
         try:
             gamePk = gameObj[0]
+            if gamePk in predicted_ids:
+                continue
             game = gameObj[1]
             ret = mlb.predict_game(gamePk)
             if ret is None or ret[0] is None:
@@ -322,6 +340,8 @@ def generate_daily_predictions(
         except Exception as e:
             print(f"Error predicting next game: \n{e}\n")
             continue
+        if len(gameObj) == 3:
+            doubleheader_game = gameObj[2]
         if not winner:
             continue
         home, away = info["home"], info["away"]
@@ -343,21 +363,17 @@ def generate_daily_predictions(
         info["winning_pitcher"] = None
         info["losing_pitcher"] = None
         info["tweeted?"] = False
-        tweet = gen_prediction_tweet(
-            winner,
-            (info["home"] if info["away"] == winner else info["away"]),
-            info["time"],
-            info["venue"],
-        )
+        tweet = gen_game_line(info)
+        if len(gameObj) == 3:
+            tweet = f"{tweet} ({game['time']})"
         info["tweet"] = tweet
-        tweet_time = pd.to_datetime(info["datetime"]) - timedelta(hours=1)
+        tweet_time = datetime.now().replace(hour=9, minute=45, second=0, microsecond=0)
         info["time_to_tweet"] = tweet_time.replace(tzinfo=None)
-        schedule_job(info, tweet_time)
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \nAdded game "
-            f"({info['away']} @ {info['home']}) to tweet schedule "
-            f"for {tweet_time.astimezone(eastern).strftime('%I:%M %p')}\n"
+            f"({info['away']} @ {info['home']}) to prediction tweet"
         )
+        tweet_lines.append(tweet)
         game_predictions.append(info)
 
     df_new = pd.DataFrame(game_predictions)
@@ -406,15 +422,121 @@ def generate_daily_predictions(
     except Exception as _:
         print(
             f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... \n"
-            f"No new games to added to predictions.xlsx\n"
+            f"No new games to added to data sheet\n"
         )
-    return game_predictions
+    return tweet_lines
+
+
+def mark_as_tweeted(tweet: str) -> None:
+    """
+    Function to mark a tweet as tweeted in the data sheet
+
+    Args: 
+        tweet: tweet that has been sent and should be marked as sent
+    """
+    # read predictions in dataframe
+    df = pd.read_excel(get_data_path())
+    # split tweet to get individual tweet lines
+    lines = tweet.split('\n')
+    # find row with current tweet, and marked 'tweeted?' as True
+    for line in lines:
+        # preprocess tweet to get rid of formatting
+        line = line.replace("•", "")
+        line = line.strip()
+        try:
+            df.loc[df['tweet'] == line, 'tweeted?'] = True 
+        except:
+            print(
+                f"Failed to mark tweet... \n"
+                f"'{line}' as tweeted."
+            )
+            continue
+    # write back to excel
+    df.to_excel(get_data_path(), index=False)
+
+
+def send_tweet(tweet: str) -> bool:
+    """
+    Function to send a tweet 
+
+    Args: 
+        tweet: tweet to send
+
+    Returns: 
+        bool: True or False to represent success or failure
+
+    """
+    try:
+        tweet_script = os.path.join(cwd, "server/tweet.py")
+        process = subprocess.Popen(
+            ["python3", tweet_script, tweet],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        process.wait()
+        stdout, stderr = process.communicate()
+        print(stdout.strip())
+        print(stderr.strip())
+        return_code = process.poll()
+        if return_code != 0:
+            print(f"Error calling tweet.py: return code={return_code}")
+            return False 
+        mark_as_tweeted(tweet)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
+            f"\nError tweeting results{e}\n"
+        )
+        return False
+
+
+def schedule_tweets(tweet_lines: List[str]) -> None: 
+    """
+    Function to schedule the prediction tweet(s) for the day 
+        -> Will make call to tweet_generator.py for body of tweet(s)
+        -> Will schedule add tweet script subprocess for each tweet
+
+    Args: 
+        tweet_lines: list of prediction strings for each individual game
+
+    Returns: 
+        None
+    """
+    global daily_scheduler
+    tweets = create_tweets(tweet_lines)
+    now = datetime.now(eastern)
+    start_time = now.replace(hour=9, minute=45, second=0, microsecond=0)
+    end_time = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    delay = 0
+    # add each tweet to the scheduler
+    for tweet in tweets[::-1]:
+        now = datetime.now(eastern)
+        # check if missed normal tweet time (before 9:45 AM)
+        if start_time <= now <= end_time:
+            # If missed normal time (after 9:45) schedule tweet in 10 mins
+            tweet_time = now + timedelta(minutes=1, seconds=delay)
+        else:
+            # schedule tweet
+            tweet_time = datetime.now().replace(hour=9, minute=45, second=delay, microsecond=0)
+        print("Scheduling Tweet...\n")
+        daily_scheduler.add_job(
+            send_tweet, args=[tweet], trigger="date", run_date=tweet_time
+        )
+        print(
+            f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}..."
+            f"\n{tweet}\n"
+            f"...scheduled to be sent at {tweet_time.strftime('%D - %I:%M:%S %p')}\n"
+        )
+        delay += 5
+    return
 
 
 def check_and_predict():
     global daily_scheduler
     daily_scheduler = None
-    data_file = os.path.join(cwd, "data/predictions.xlsx")
+    data_file = os.path.join(cwd, get_data_path())
     try:
         load_unchecked_predictions_from_excel(data_file)
     except Exception as e:
@@ -429,12 +551,18 @@ def check_and_predict():
     daily_scheduler.add_listener(print_next_job, EVENT_JOB_EXECUTED)
     daily_scheduler.add_listener(print_next_job, EVENT_JOB_MISSED)
 
-    generate_daily_predictions()
+    tweet_lines = generate_daily_predictions()
+    '''try:
+        schedule_tweets(tweet_lines)
+    except Exception as e:
+        print(f"Error sending prediction tweet(s). {e}")'''
+    schedule_tweets(tweet_lines)
+
     # start call is blocking, so scheduler shutdown in listener when last event finished
     daily_scheduler.start()
     print(
         f"{datetime.now(eastern).strftime('%D - %I:%M:%S %p')}... "
-        f"\nAll daily prediction tweets complete. "
+        f"\nAll prediction tweets sent. "
         f"Exiting predict.py check_and_predict\n"
     )
     time.sleep(10)
