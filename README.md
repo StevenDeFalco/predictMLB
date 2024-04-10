@@ -1,4 +1,4 @@
-# mlb-predict
+# predictMLB
 
 ### [@predictMLB on Twitter](https://twitter.com/predictmlb)
 ### Summer project 2023
