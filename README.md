@@ -3,7 +3,7 @@
 ### [@predictMLB on Twitter](https://twitter.com/predictmlb)
 ### Summer project 2023
 
-Twitter bot that publishs MLB game predictions made by a machine learning model trained on historical MLB data. The bot tweets it's results from yesterday each morning at ~ 09:30 NY time and tweets individual game predictions with the best live odds ~ 1 hour before the each game's start.
+Twitter bot that publishs MLB game predictions made by a machine learning model trained on historical MLB data. The bot tweets it's results from yesterday each morning at ~ 09:30 NY time and tweets a list of all game predictions at 09:45 NY time in as few tweets as possible. 
 
 
 ## Data Retrieval and Processing
@@ -111,22 +111,23 @@ In the main script itself, I instantiate a `apscheduler.BlockingScheduler` which
 
 ### `predict.py` 
 
-In this module, first a new `apscheduler.BlockingScheduler` is instantiated and then `check_and_predict` is ran. First it will run a function called `load_unchecked_predictions_from_excel` which, intuitively, loads predictions stored in the predictions sheet that haven't yet been checked for accuracy. This function checks whether the predictions were correct, and upon completion of this check will send a tweet summarizing number correct vs. wrong and additonally will highlight an upset that I had predicted correctly, if there is one of note (i.e. a betting underdog defeats a favorite). Next `generate_daily_predictions` is called and this function will load any tweets that need to be sent that day which are in the sheet already and it will add those to the daily schedule of tweets, it will additionally make predictions on all remaining games and those to the tweet schedule as well. Then throughout the day, the schedule will fork new processes to prepare and send tweets at their scheduled time (1 hour before gametime). Before tweets are sent, they must be run through the `prep_tweet.py` file which ensures that the odds were updated within the last 15 minutes and if not will update them; I limit my system to 1 odds request per 15 minutes because I use an API for that with a monthly request limit. 
+In this module, first a new `apscheduler.BlockingScheduler` is instantiated and then `check_and_predict` is ran. First it will run a function called `load_unchecked_predictions_from_excel` which, intuitively, loads predictions stored in the predictions sheet that haven't yet been checked for accuracy. This function checks whether the predictions were correct, and upon completion of this check will send a tweet summarizing number correct vs. wrong and additonally will highlight an upset that I had predicted correctly, if there is one of note (i.e. a betting underdog defeats a favorite). Next `generate_daily_predictions` is called and this function will load any tweets that need to be sent that day which are in the sheet already and it will add those to the list of games to be tweeted, it will additionally make predictions on all remaining games and those to the list of games to be tweeted. Then the list of games to be tweeted will be fed into modules found in the 'server' directory to construct each individual line of the tweet (a single game prediction) and then to distribute the games across the minimum number of tweets (given 268 character limit) and return the body of each of these tweets. Then we add to our 'BlockingScheduler' a function to fork and run the tweet script for 09:45 with 5 seconds between each tweet (if multiple). 
 
 ## Conclusion
 
 This is the general overview of my project. I've really enjoyed creating this and feel that I got a lot of good practice and learning all throughout. As of writing this however (04 August 2023), I have many plans to continue new development on this project along with, of course, maintaining the current system (at least until the end of the MLB season). 
+
+### Goals completed
+
+- improve ML model (higher accuracy): move away from ELO statistics, try using larger datasets for training 
+- tune typerparameters further
+- simplify tweeting format to make this project more accessible
 
 ### Some goals for this project's future 
 
 - interact with a LLM for text-generation to create unique tweets for each game 
 - grow the twitter account?
 - other sports? (NBA, NFL)
-
-### Goals completed
-
-- improve ML model (higher accuracy): move away from ELO statistics, try using larger datasets for training 
-- tune typerparameters further
 
 ## Changes
 
