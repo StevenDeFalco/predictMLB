@@ -523,7 +523,7 @@ def schedule_tweets(tweet_lines: List[str]) -> None:
         None
     """
     global daily_scheduler
-    if not tweets:
+    if not tweet_lines:
         return
     tweets = create_tweets(tweet_lines)
     now = datetime.now(eastern)
