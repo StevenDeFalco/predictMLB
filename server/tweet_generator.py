@@ -21,11 +21,15 @@ def gen_game_line(row: pd.Series) -> str:
     away = row["away"]
     home_odds = row["home_odds"]
     # if home_odds are positive (e.g. +150)
-    if int(home_odds) >= 100:
+    if not home_odds:
+        home_odds = "N/A"
+    elif int(home_odds) >= 100:
         home_odds = f"+{str(int(home_odds))}"
     away_odds = row["away_odds"]
     # if away_odds are positive (e.g. +150)
-    if int(away_odds) >= 100:
+    if not away_odds:
+        away_odds = "N/A"
+    elif int(away_odds) >= 100:
         away_odds = f"+{str(int(away_odds))}"
     home_bookmaker = row["home_odds_bookmaker"]
     away_bookmaker = row["away_odds_bookmaker"]

@@ -225,6 +225,23 @@ def safely_prepare(row: pd.Series) -> str:
         lock.release()
     return tweet_line
 
+def are_within_30_minutes(dt1, dt2):
+    """
+    function to check if two datetime strings are within 30 mintues
+
+    Args:
+        dt1: first datetime object string
+        dt2: second datetime object string
+    
+    Returns: 
+        bool if within 30 minutes or not
+    """
+    dt1 = datetime.fromisoformat(dt1.rstrip('Z'))
+    dt2 = datetime.fromisoformat(dt2.rstrip('Z'))
+    diff = abs(dt1-dt2)
+    thirty_mins = timedelta(minutes=30)
+    return diff <= thirty_mins
+
 
 def generate_daily_predictions(
     model: str = selected_model, date = datetime.now()
@@ -318,7 +335,8 @@ def generate_daily_predictions(
             continue
         elif len(teams_games) == 1:
             day_game = teams_games[0]
-            if day_game['game_datetime'] != game['commence_time']:
+            # if day_game['game_datetime'] != game['commence_time']:
+            if not are_within_30_minutes(day_game['game_datetime'], game['commence_time']):
                 continue
             if (day_game.get("game_id") not in scheduled_ids) and (
                 day_game.get("game_date")
@@ -363,7 +381,7 @@ def generate_daily_predictions(
         info["winning_pitcher"] = None
         info["losing_pitcher"] = None
         info["tweeted?"] = False
-        tweet = gen_game_line(info)
+        tweet = gen_game_line(info) 
         if len(gameObj) == 3:
             tweet = f"{tweet} ({game['time']})"
         info["tweet"] = tweet
@@ -505,6 +523,8 @@ def schedule_tweets(tweet_lines: List[str]) -> None:
         None
     """
     global daily_scheduler
+    if not tweets:
+        return
     tweets = create_tweets(tweet_lines)
     now = datetime.now(eastern)
     start_time = now.replace(hour=9, minute=45, second=0, microsecond=0)
